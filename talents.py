@@ -3,18 +3,17 @@ talents.py - Gothic's crafting, gathering and utility talents, grouped.
 
 Taken from Constants.d in the Gothic II MDK. No Qt in here.
 
-Two kinds of entry, both keyed by the Daedalus they emit:
+Two kinds of entry:
 
-  skill   Npc_SetTalentSkill (self, NPC_TALENT_X, 1);   a talent with no recipes
-  recipe  PLAYER_TALENT_X[CONST] = TRUE;                 one thing a talent can make
+  skill   a talent on its own (theft, regeneration, fire master)
+  recipe  one thing a talent can make; its talent is the list's master
 
-Recipes are Gothic's global PLAYER_TALENT_* flags: the game keeps one set, for
-the hero, so ticking one on an NPC unlocks it for the hero when that NPC is
-created. The skills are per NPC.
+Ticking an entry makes the NPC know the talent
+(Npc_SetTalentSkill (self, NPC_TALENT_X, 1);) and, where Gothic has a teaching
+function for it, teach it: see teachable() and teach_gen.py.
 """
 
 SKILL_LINE = "\tNpc_SetTalentSkill\t(self, {}, 1);"
-RECIPE_LINE = "\t{}[{}]\t= TRUE;"
 
 
 def _skill(const, label):
@@ -22,8 +21,7 @@ def _skill(const, label):
 
 
 def _recipes(array, items):
-    return [{"id": f"{array}[{c}]", "label": label,
-             "line": RECIPE_LINE.format(array, c)} for c, label in items]
+    return [{"id": f"{array}[{c}]", "label": label} for c, label in items]
 
 
 POTIONS = [
@@ -109,15 +107,64 @@ GROUPS = [
 
 
 def lines(selected):
-    """Daedalus lines for the ticked ids, in the order the tab lists them.
+    """Npc_SetTalentSkill lines for the ticked ids, in the order the tab lists them.
 
-    A ticked recipe brings its master talent along, once, ahead of the recipes.
+    A ticked recipe brings its master talent along, once.
     """
     out = []
     for _, skills, recipe_lists in GROUPS:
         out += [e["line"] for e in skills if e["id"] in selected]
         for _, master, recipes in recipe_lists:
-            ticked = [r["line"] for r in recipes if r["id"] in selected]
-            if ticked:
-                out += [SKILL_LINE.format(master), *ticked]
+            if any(r["id"] in selected for r in recipes):
+                out.append(SKILL_LINE.format(master))
     return out
+
+
+# ----------------------------------------------------------------- teaching
+
+TEACH_FUNC = {
+    "NPC_TALENT_ALCHEMY": "B_TeachPlayerTalentAlchemy",
+    "NPC_TALENT_RUNES": "B_TeachPlayerTalentRunes",
+    "NPC_TALENT_SMITH": "B_TeachPlayerTalentSmith",
+    "NPC_TALENT_TAKEANIMALTROPHY": "B_TeachPlayerTalentTakeAnimalTrophy",
+    "NPC_TALENT_FOREIGNLANGUAGE": "B_TeachPlayerTalentForeignLanguage",
+    "NPC_TALENT_WISPDETECTOR": "B_TeachPlayerTalentWispDetector",
+}
+
+#: B_TeachThiefTalent covers these four; regeneration and fire master have no
+#: teaching function in the scripts.
+THIEF_TALENTS = ("NPC_TALENT_PICKLOCK", "NPC_TALENT_PICKPOCKET",
+                 "NPC_TALENT_SNEAK", "NPC_TALENT_ACROBAT")
+
+
+def group_titles():
+    return [title for title, _, _ in GROUPS]
+
+
+def teachable(title):
+    """What a teacher in this group can offer, as dicts for teach_gen.
+
+    Each has the id (as ticked in the tab), the label, the constant (for naming), the Daedalus condition that
+    is true while the hero has not learned it, the learning-point cost
+    expression, and the teaching call.
+    """
+    items = []
+    for group, skills, recipe_lists in GROUPS:
+        if group != title:
+            continue
+        for e in skills:
+            if e["id"] in THIEF_TALENTS:
+                items.append({
+                    "id": e["id"], "label": e["label"], "const": e["id"],
+                    "unknown": f"Npc_GetTalentSkill (other, {e['id']}) == 0",
+                    "cost": f"B_GetLearnCostTalent (other, {e['id']}, 1)",
+                    "call": f"B_TeachThiefTalent (self, other, {e['id']})"})
+        for _, master, recipes in recipe_lists:
+            for r in recipes:
+                array, const = r["id"].rstrip("]").split("[")
+                items.append({
+                    "id": r["id"], "label": r["label"], "const": const,
+                    "unknown": f"{r['id']} == FALSE",
+                    "cost": f"B_GetLearnCostTalent (other, {master}, {const})",
+                    "call": f"{TEACH_FUNC[master]} (self, other, {const})"})
+    return items

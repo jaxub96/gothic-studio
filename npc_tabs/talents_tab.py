@@ -1,7 +1,8 @@
 """Talents tab - crafting, gathering and utility talents, as checkboxes.
 
 One section per group in talents.py: talents that have no recipes, then each
-recipe list in a grid with All / None. A ticked recipe adds its talent itself.
+recipe list in a grid with All / None. Whatever is ticked, the NPC teaches (see
+teach_gen.py); a ticked recipe also gives the NPC its talent.
 """
 
 from PyQt6.QtWidgets import QFrame, QGridLayout, QScrollArea, QVBoxLayout, QWidget
@@ -34,6 +35,9 @@ def build(parent: QWidget, npc, handlers) -> None:
         return ui.checkbox(entry["label"], entry["id"] in npc.talents,
                            lambda on, i=entry["id"]: toggle(i, on), compact=True)
 
+    layout.addWidget(ui.hint("NPC can teach selected talents"))
+    layout.addSpacing(ui.GAP)
+
     for title, skills, recipe_lists in talents.GROUPS:
         ui.section(layout, title)
 
@@ -61,10 +65,6 @@ def build(parent: QWidget, npc, handlers) -> None:
                 grid.setColumnStretch(c, 1)
             layout.addLayout(grid)
 
-    layout.addSpacing(ui.GAP)
-    layout.addWidget(ui.hint(
-        "Ticking a recipe also gives the NPC its talent. Recipes are Gothic's "
-        "global PLAYER_TALENT_* flags: the game keeps one set, for the hero."))
     layout.addStretch()
 
 

@@ -43,7 +43,7 @@ class DialogPage(QWidget):
         # Built first: the header wires signals that call _refresh_preview.
         self.side = ui.SidePanel(self._validate, self._save,
                                  lambda: self._save(ask=True),
-                                 "Write into Content/Story/Dialoge")
+                                 "Write into Content/Story/Dialoge", on_open=self._open)
 
         # The spoken lines on their own - the same thing Export text writes,
         # and what you want when you are reading the conversation rather than
@@ -482,14 +482,16 @@ class DialogPage(QWidget):
             self, "Open Dialog File", str(project.DIA_DIR), "Daedalus (*.d)")
         if not path:
             return
+        notes = []
         try:
-            npc_name, npc_id, blocks = parse_dia_file(project.read_script(path))
+            npc_name, npc_id, blocks = parse_dia_file(project.read_script(path), notes)
         except OSError as e:
             QMessageBox.critical(self, "Could Not Open", f"{e}")
             return
         self._load_project(npc_name, npc_id, blocks)
         self.current_file_path = path
         self.side.say(f"Opened: {path}")
+        ui.report_omissions(self, "Open dialog", notes)
 
     def _new_project(self):
         if self.blocks or self._npc_name() or self._npc_id():

@@ -188,3 +188,188 @@ def validate(npc):
         problems.append(f"Instance {inst} already exists in {existing[inst]}")
 
     return problems
+
+
+# --- Parsing ----------------------------------------------------------------
+
+_TALENT_FIELDS = {"NPC_TALENT_1H": "t1h", "NPC_TALENT_2H": "t2h", "NPC_TALENT_BOW": "bow",
+                  "NPC_TALENT_CROSSBOW": "cbow", "NPC_TALENT_MAGE": "magic"}
+_ATTRIBUTES = {"ATR_STRENGTH": "str", "ATR_DEXTERITY": "dex",
+               "ATR_MANA_MAX": "mana", "ATR_HITPOINTS_MAX": "hp"}
+_SHIFT = re.compile(r'(TA_\w+)\s*\(\s*(\d+)\s*,\s*\d+\s*,\s*(\d+)\s*,\s*\d+\s*,\s*"([^"]*)"\s*\)', re.I)
+
+
+def _skill_level(percent):
+    """Gothic's 30 / 60 percent boundaries between the talent levels."""
+    return 2 if percent >= 60 else 1 if percent >= 30 else 0
+
+
+def _args(call):
+    """The comma-separated arguments of `Name (a, "b, c", d)`, strings kept whole."""
+    inner = call[call.index("(") + 1:call.rindex(")")]
+    parts, cur, quoted = [], "", False
+    for ch in inner:
+        if ch == '"':
+            quoted = not quoted
+        if ch == "," and not quoted:
+            parts.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+    parts.append(cur.strip())
+    return parts
+
+
+def parse_npc(text):
+    """Read an NPC instance back into an Npc: this tool's files and vanilla-style ones.
+
+    Returns None if there is no Npc_Default instance in `text`. Whatever the
+    editor has no field for (aivars, EquipItem, B_GiveNpcTalents, extra routine
+    functions, ...) is listed in `npc.unread` so the caller can say so instead
+    of dropping it quietly. Names are matched to the mod's own spelling where
+    they exist, since vanilla scripts mix upper and lower case freely.
+    Talent skills that belong to a recipe list come back as `npc.master_talents`;
+    the recipes live in the teaching dialog (see teach_gen.parse_teaching).
+    """
+    import gamedata
+    import talents
+    from daedalus_read import (assignment, canon, functions, instances, norm,
+                               split_statements, unquote)
+    from npc_model import Npc
+
+    found = [i for i in instances(text) if i[1].lower() == "npc_default"]
+    if not found:
+        return None
+    _, _, body = found[0]
+    funcs = functions(text)
+    npc = Npc()
+    unread = []
+    skill_ids = {e["id"] for _, skills, _ in talents.GROUPS for e in skills}
+    explicit_level = fight_percent = None
+    explicit_weapons = False
+    overlay_seen = False
+    routine_name = ""
+    npc.master_talents = set()
+
+    def number(value, default):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+
+    for raw, _comment in split_statements(body):
+        st = norm(raw)
+        low = st.lower()
+        kv = assignment(raw) if "(" not in st.split("=")[0] else None
+        if kv:
+            key, value = kv[0].lower(), kv[1]
+            if key == "name":
+                npc.name = unquote(value)
+            elif key == "guild":
+                npc.guild = canon(value, gamedata.guilds())
+            elif key == "id":
+                npc.id = str(number(value, 1)).zfill(3)
+            elif key == "voice":
+                npc.voice = number(value, npc.voice)
+            elif key == "flags":
+                npc.immortal = int("immortal" in value.lower())
+            elif key == "npctype":
+                if value.upper() == "NPCTYPE_FRIEND":
+                    npc.friend = 1
+                else:
+                    npc.type = canon(value, gamedata.npctypes())
+            elif key == "level":
+                explicit_level = number(value, 1)
+                npc.level = explicit_level
+            elif key.startswith("attribute[") and key[10:-1].upper() in _ATTRIBUTES:
+                setattr(npc, _ATTRIBUTES[key[10:-1].upper()], number(value, 10))
+            elif key == "attribute[atr_mana]" or key == "attribute[atr_hitpoints]":
+                pass
+            elif key == "fight_tactic":
+                npc.fight = canon(value, gamedata.tactics())
+            elif key == "daily_routine":
+                routine_name = value.lower()
+            else:
+                unread.append(st)
+            continue
+
+        m = re.match(r"(\w+)\s*\(", st)
+        call = m.group(1).lower() if m else ""
+        args = _args(st) if m else []
+        if call == "b_setattributestochapter" and len(args) >= 2:
+            npc.use_chapter, npc.chapter = True, number(args[1], 1)
+        elif call == "b_setnpcvisual" and len(args) >= 6:
+            npc.gender = args[1].upper()
+            npc.head = canon(unquote(args[2]).rstrip(". "), gamedata.heads())
+            npc.face = canon(args[3], gamedata.faces())
+            npc.body_tex = canon(args[4], gamedata.body_textures())
+            npc.armor = "-1" if args[5] in ("-1", "NO_ARMOR") else canon(args[5], gamedata.armors())
+        elif call == "mdl_applyoverlaymds" and len(args) >= 2 and not overlay_seen:
+            npc.overlay = canon(unquote(args[1]), gamedata.overlays())
+            overlay_seen = True
+        elif call == "mdl_setmodelfatness" and len(args) >= 2:
+            try:
+                npc.fatness = float(args[1])
+            except ValueError:
+                unread.append(st)
+        elif call == "b_setfightskills" and len(args) >= 2:
+            fight_percent = number(args[1], 0)
+        elif call == "npc_settalentskill" and len(args) >= 3:
+            const, level = args[1].upper(), number(args[2], 1)
+            if const in _TALENT_FIELDS:
+                setattr(npc, _TALENT_FIELDS[const], level)
+                explicit_weapons = True
+            elif const in skill_ids:
+                npc.talents.add(const)
+            else:
+                npc.master_talents.add(const)
+        elif call in ("createinvitems", "createinvitem") and len(args) >= 2:
+            item = canon(args[1], gamedata.items())
+            qty = number(args[2], 1) if len(args) > 2 else 1
+            for entry in npc.inv_items:
+                if entry["item"] == item:
+                    entry["quantity"] += qty
+                    break
+            else:
+                npc.inv_items.append({"item": item, "quantity": qty})
+        elif call == "b_createambientinv":
+            npc.ambient_inv = 1
+        elif low:
+            unread.append(st)
+
+    # Vanilla scripts set every weapon talent from one percentage. This tool's own
+    # files write `level` instead and list the talents explicitly.
+    if fight_percent is not None and explicit_level is None and not explicit_weapons:
+        for attr in ("t1h", "t2h", "bow", "cbow"):
+            setattr(npc, attr, _skill_level(fight_percent))
+
+    name = routine_name
+    if name and name in funcs:
+        shifts, other = [], 0
+        for raw, _comment in split_statements(funcs[name][1]):
+            s = _SHIFT.search(norm(raw))
+            if s:
+                shifts.append(s.groups())
+            elif norm(raw):
+                other += 1
+        if shifts:
+            npc.routine, day, _, npc.waypoint = shifts[0]
+            npc.routine = canon(npc.routine, gamedata.routines())
+            npc.day_start = int(day)
+            if len(shifts) > 1:
+                npc.split_routine = True
+                night_rtn, night, _, npc.night_waypoint = shifts[1]
+                npc.night_routine = canon(night_rtn, gamedata.routines())
+                npc.night_start = int(night)
+            if len(shifts) > 2:
+                unread.append(f"{len(shifts) - 2} further routine shift(s) in {funcs[name][0]}")
+        if other:
+            unread.append(f"{other} non-schedule statement(s) in {funcs[name][0]}")
+    elif name:
+        unread.append(f"routine function {name} not found in this file")
+
+    others = [f[0] for key, f in funcs.items() if key != name]
+    if others:
+        unread.append("other functions: " + ", ".join(others))
+    npc.unread = unread
+    return npc

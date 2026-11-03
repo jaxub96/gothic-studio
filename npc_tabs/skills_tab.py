@@ -40,3 +40,4 @@ def build(parent: QWidget, npc, handlers) -> None:
                  ui.choice(CIRCLES, npc.magic,
                            lambda v: handlers.assignAttribute(
                                "magic", lambda: v, int)))
+    layout.addStretch()

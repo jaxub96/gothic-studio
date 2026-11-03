@@ -5,11 +5,14 @@ Saves into Content/Story/NPC in CP1250, validates identifiers before saving,
 and announces the instance name it built so the Dialog page can pick it up.
 """
 
+from pathlib import Path
+
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (QFileDialog, QMessageBox, QTextEdit, QVBoxLayout,
                              QWidget)
 
 import npc_gen
+import teach_gen
 import project
 import ui
 from npc_handlers import NpcHandlers
@@ -46,7 +49,7 @@ class NpcPage(QWidget):
         # being constructed, and those call refresh(), which needs it to exist.
         self.side = ui.SidePanel(self._validate, self._save,
                                  lambda: self._save(ask=True),
-                                 "Write into Content/Story/NPC")
+                                 "Write into Content/Story/NPC", on_open=self._open)
 
         self.model_view = ModelView(self.npc)
         self.side.add_tab(self.model_view, "3D view")
@@ -57,9 +60,22 @@ class NpcPage(QWidget):
         self.preview.setStyleSheet(ui.code_view_css())
         DaedalusHighlighter(self.preview.document())
         self.side.add_tab(self.preview, "Script")
+
+        self.teaching = QTextEdit()
+        self.teaching.setReadOnly(True)
+        self.teaching.setFont(mono_font())
+        self.teaching.setStyleSheet(ui.code_view_css())
+        DaedalusHighlighter(self.teaching.document())
+        self.side.add_tab(self.teaching, "Teaching")
         self.side.tabs.currentChanged.connect(self._preview_tab_changed)
 
         self.tabs = ui.SideTabs()
+        self._fill_tabs()
+
+        root.addWidget(ui.page(self.tabs, self.side, left=0))
+
+    def _fill_tabs(self):
+        """Build every tab's widgets from the current Npc."""
         for title, module in [("General", general_tab), ("Stats", stats_tab),
                               ("Skills", skills_tab), ("Talents", talents_tab),
                               ("Visual", visual_tab),
@@ -70,11 +86,12 @@ class NpcPage(QWidget):
             self.tabs.addTab(page, title)
             module.build(page, self.npc, self.handlers)
 
-        root.addWidget(ui.page(self.tabs, self.side, left=0))
-
     # ------------------------------------------------------------------ actions
     def refresh(self):
         self.preview.setPlainText(npc_gen.build_npc(self.npc))
+        self.teaching.setPlainText(
+            teach_gen.build_teaching(self.npc)
+            or "// Tick talents on the Talents tab to make this NPC a teacher.")
         inst = npc_gen.instance_name(self.npc)
         if inst != self._last_instance:
             self._last_instance = inst
@@ -111,6 +128,36 @@ class NpcPage(QWidget):
                                 "\n".join("- " + p for p in problems))
         return problems
 
+    def _open(self):
+        """Load a saved NPC .d back into the editor, with its teaching file."""
+        chosen, _ = QFileDialog.getOpenFileName(
+            self, "Open NPC", str(project.NPC_DIR), "Daedalus (*.d)")
+        if not chosen:
+            return
+        npc = npc_gen.parse_npc(project.read_script(Path(chosen)))
+        if npc is None:
+            QMessageBox.warning(self, "Open NPC",
+                                "No Npc_Default instance found in that file.")
+            return
+
+        lesson = Path(chosen).parent / teach_gen.filename(npc)
+        if not lesson.is_file():
+            lesson = project.DIA_DIR / teach_gen.filename(npc)
+        if lesson.is_file():
+            npc.talents |= teach_gen.parse_teaching(project.read_script(lesson))
+
+        # The handlers and tabs hold the existing Npc, so overwrite it in place
+        # and rebuild the widgets from it.
+        self.npc.__dict__.clear()
+        self.npc.__dict__.update(npc.__dict__)
+        current = self.tabs.currentIndex()
+        self.tabs.clear()
+        self._fill_tabs()
+        self.tabs.setCurrentIndex(max(current, 0))
+        self.refresh()
+        self.side.say(f"Opened  {Path(chosen).name}")
+        ui.report_omissions(self, "Open NPC", npc.unread)
+
     def _save(self, ask=False):
         problems = npc_gen.validate(self.npc)
         # An existing-instance clash is a real error; everything else is a warning
@@ -133,12 +180,17 @@ class NpcPage(QWidget):
             target = chosen
 
         path = project.write_script(target, npc_gen.build_npc(self.npc))
+        lesson = teach_gen.build_teaching(self.npc)
+        if lesson:
+            folder = Path(target).parent if ask else project.DIA_DIR
+            project.write_script(folder / teach_gen.filename(self.npc), lesson)
         import gamedata
         gamedata.npc_instances.cache_clear()   # so the Dialog page sees it
         # No modal on success. Saving happens dozens of times a session and a
         # dialog to dismiss every time breaks the edit-compile-test loop; the
         # status line under the preview says what happened instead.
-        self.side.say(f"Saved  {path.name}  ->  {path.parent}")
+        extra = f"  +  {teach_gen.filename(self.npc)}" if lesson else ""
+        self.side.say(f"Saved  {path.name}{extra}  ->  {path.parent}")
         self.saved.emit(str(path))
 
 

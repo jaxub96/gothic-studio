@@ -349,6 +349,7 @@ def radio_row(text, options, value, on_change):
 
     holder = QWidget()
     holder.setStyleSheet("background:transparent;")
+    holder.setMinimumHeight(BUTTON_H)
     line = QHBoxLayout(holder)
     line.setContentsMargins(0, 0, 0, 0)
     line.setSpacing(GAP)
@@ -568,6 +569,14 @@ class SideTabs(QWidget):
             self._stack.setCurrentIndex(index)
             self.currentChanged.emit(index)
 
+    def clear(self):
+        """Drop every tab and its page, so the pages can be rebuilt."""
+        self._list.clear()
+        while self._stack.count():
+            page_ = self._stack.widget(0)
+            self._stack.removeWidget(page_)
+            page_.deleteLater()
+
     def addTab(self, widget, title):
         self._list.addItem(title)
         self._stack.addWidget(widget)
@@ -598,7 +607,8 @@ class SidePanel(QWidget):
     the same corner, the status line saying the same kind of thing.
     """
 
-    def __init__(self, on_validate, on_save, on_save_as, save_tip="", parent=None):
+    def __init__(self, on_validate, on_save, on_save_as, save_tip="", on_open=None,
+                 parent=None):
         super().__init__(parent)
         col = QVBoxLayout(self)
         col.setContentsMargins(0, 0, 0, 0)
@@ -620,6 +630,9 @@ class SidePanel(QWidget):
                                  "Check every identifier against Content/"))
         actions.addWidget(button("Save as...", on_save_as, DEFAULT,
                                  "Save somewhere other than the mod"))
+        if on_open:
+            actions.addWidget(button("Open...", on_open, DEFAULT,
+                                     "Load a saved .d file back into the editor"))
         actions.addStretch()
         actions.addWidget(button("Save to mod", on_save, PRIMARY, save_tip))
         col.addLayout(actions)
@@ -646,10 +659,26 @@ def page(work_area, side_panel, work_stretch=3, side_stretch=2, left=PADDING):
     return holder
 
 
+def report_omissions(parent, title, notes, limit=25):
+    """Tell the user what an Open could not carry into the editor, if anything."""
+    if not notes:
+        return
+    from PyQt6.QtWidgets import QMessageBox
+
+    shown = chr(10).join("- " + n for n in notes[:limit])
+    more = f"{chr(10)}...and {len(notes) - limit} more" if len(notes) > limit else ""
+    QMessageBox.information(
+        parent, title,
+        f"Opened. {len(notes)} thing(s) in the file have no place in the editor "
+        f"and will not be written back:{chr(10)}{chr(10)}{shown}{more}")
+
+
 def code_view_css():
     """The read-only script preview."""
     return (f"QTextEdit {{ background:{THEME['bg_code']}; "
             f"  color:{THEME['text_primary']}; border:none; "
+            f"  font-family:{THEME['font_code']}; "
+            f"  font-size:{THEME['font_size_code']}pt; "
             f"  border-radius:{THEME['radius_md']}; padding:12px; }}")
 
 
@@ -675,6 +704,15 @@ def number(lo, hi, value, on_change, suffix="", width=NUMBER_W, steppers=False):
     w.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     w.setButtonSymbols(QSpinBox.ButtonSymbols.UpDownArrows if steppers
                        else QSpinBox.ButtonSymbols.NoButtons)
+    if not steppers:
+        # Any stylesheet on a QSpinBox without buttons collapses its text area
+        # to one pixel unless the hidden buttons are pinned to zero width.
+        w.setStyleSheet(
+            _input_css("QSpinBox")
+            + "QSpinBox::up-button, QSpinBox::down-button "
+              "{ subcontrol-origin:border; width:0; }")
+        w.valueChanged.connect(on_change)
+        return w
     w.setStyleSheet(
         _input_css("QSpinBox")
         + f"QSpinBox::up-button, QSpinBox::down-button {{ width:20px; "

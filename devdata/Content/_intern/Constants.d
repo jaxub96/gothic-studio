@@ -1,0 +1,17 @@
+const int GIL_NONE	= 0;
+const int GIL_PAL	= 1;
+const int GIL_MIL	= 2;
+const int GIL_VLK	= 3;
+const int GIL_KDF	= 4;
+const int GIL_NOV	= 5;
+const int GIL_DJG	= 6;
+const int GIL_SLD	= 7;
+const int GIL_BAU	= 8;
+const int GIL_BDT	= 9;
+const int GIL_STRF	= 10;
+const int GIL_DMT	= 11;
+const int GIL_OUT	= 12;
+const int GIL_PIR	= 13;
+const int GIL_KDW	= 14;
+const int GIL_SEPERATOR_HUM	= 15;
+const int GIL_G1	= 16;

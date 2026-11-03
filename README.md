@@ -13,7 +13,7 @@ in `Content/`.
 ```
 pip install -r requirements.txt
 python studio.py          # or run.bat on Windows, ./run.sh on macOS/Linux
-python studio.py --dev    # no Gothic II needed (dev.bat); scratch data goes in .devmod/
+python studio.py --dev    # no Gothic II needed (dev.bat); a sample mod in devdata/ (with a complex NPC, teaching and dialog) is copied to .devmod/
 ```
 
 **On a Mac** — `cd gothic-studio && ./build-macos.sh` builds

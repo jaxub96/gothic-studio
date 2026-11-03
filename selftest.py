@@ -28,7 +28,7 @@ import project
 import studio
 
 fails = []
-HAVE_MOD = project.FOUND
+HAVE_MOD = project.FOUND and not project.DEV_FIXTURE
 
 
 def check(condition, message):

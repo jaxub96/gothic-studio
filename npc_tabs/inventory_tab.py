@@ -5,8 +5,7 @@ to exist. The old hand-written table had 512 of its 523 ids missing from this
 install.
 """
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QTreeWidgetItem, QWidget
+from PyQt6.QtWidgets import QWidget
 
 import gamedata
 import labels
@@ -28,44 +27,35 @@ def build(parent: QWidget, npc, handlers) -> None:
     ui.section(layout, "Armor")
 
     armor_panel = TexturePanel("Worn", height=116)
-    tree = ui.tree()
 
-    none_item = QTreeWidgetItem(tree, ["(no armor)"])
-    none_item.setData(0, Qt.ItemDataRole.UserRole, NO_ARMOR)
-
-    bold = ui.bold_font()
+    # One dropdown, grouped by guild in the label: "Militia - Light armor (ITAR_Mil_L)".
+    armor_codes = {"(no armor)": NO_ARMOR}
     for group, entries in gamedata.armors_by_guild().items():
-        node = QTreeWidgetItem(tree, [labels.ARMOR_GROUP.get(group, group)])
-        node.setFont(0, bold)
-        node.setData(0, Qt.ItemDataRole.UserRole, None)
         for code, name in entries:
-            child = QTreeWidgetItem(node, [f"{name}   ({code})"])
-            child.setData(0, Qt.ItemDataRole.UserRole, code)
+            armor_codes[f"{labels.ARMOR_GROUP.get(group, group)} - {name}   ({code})"] = code
+    code_labels = {code: text for text, code in armor_codes.items()}
 
     def show_armor(code):
         armor_panel.show_texture(
             textures.armor_texture(code) if code != NO_ARMOR else None,
             code if code != NO_ARMOR else "no armor")
 
-    def on_armor():
-        selected = tree.selectedItems()
-        if not selected:
-            return
-        item = selected[0]
-        code = item.data(0, Qt.ItemDataRole.UserRole)
-        if code is None:                      # a category row - fold it
-            item.setExpanded(not item.isExpanded())
+    def on_armor(text):
+        code = armor_codes.get(text)
+        if code is None:
             return
         npc.armor = code
         show_armor(code)
         handlers.refresh()
 
-    tree.itemSelectionChanged.connect(on_armor)
+    armor_box = ui.dropdown(list(armor_codes), code_labels.get(npc.armor, "(no armor)"),
+                            on_armor)
+    ui.field(layout, "Worn armor", armor_box)
 
     armor_row = ui.row(ui.SPACING)
-    armor_row.addWidget(tree, 1)
     armor_row.addWidget(armor_panel)
-    layout.addLayout(armor_row, 1)
+    armor_row.addStretch()
+    layout.addLayout(armor_row)
     layout.addSpacing(ui.SPACING)
 
     # ------------------------------------------------------------- inventory
@@ -135,6 +125,9 @@ def build(parent: QWidget, npc, handlers) -> None:
 
     def resync():
         redraw()
+        armor_box.blockSignals(True)
+        armor_box.setCurrentText(code_labels.get(npc.armor, "(no armor)"))
+        armor_box.blockSignals(False)
         show_armor(npc.armor)
 
     # Let the page re-sync us when the model changes from elsewhere.

@@ -1,0 +1,10 @@
+const int Face_N_Player	= 0;
+const int Face_N_Gomez	= 1;
+const int Face_B_Normal01	= 2;
+const int Face_P_Tough_Torrez	= 3;
+const int Face_N_Important_Arto	= 4;
+const int BodyTex_N	= 5;
+const int BodyTex_P	= 6;
+const int BodyTex_B	= 7;
+const int BodyTex_L	= 8;
+const int BodyTex_S	= 9;

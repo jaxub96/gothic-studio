@@ -46,7 +46,7 @@ THEME = {
     "font_size_tiny":   "15px",
     "font_size_title":  "22px",
     "font_size_placeholder": "21px",
-    "font_size_code":   13,          # pt, used for QFont object
+    "font_size_code":   8,           # pt, used for QFont object
 
     # ── Geometry ──────────────────────────────────────────────────────────────
     "radius_sm":        "0px",

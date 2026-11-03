@@ -8,6 +8,7 @@ is the only file you have to fix.
 
 import os
 import platform
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -40,6 +41,19 @@ def is_scripts_root(path):
         return False                          # unreadable drive, dead symlink
 
 
+def _dev_root(start):
+    """A scratch mod for --dev: .devmod/, seeded once from devdata/.
+
+    devdata/ is a tiny stand-in for Data/Scripts (a few guilds, items, armors,
+    routines, faces) so every picker has something in it without Gothic II.
+    """
+    dev = start / ".devmod"
+    seed = start / "devdata"
+    if seed.is_dir() and not is_scripts_root(dev):
+        shutil.copytree(seed, dev, dirs_exist_ok=True)
+    return dev
+
+
 def _find_scripts_root():
     """Locate ...\\Data\\Scripts, whether we run from source or as a frozen exe.
 
@@ -66,11 +80,14 @@ def _find_scripts_root():
         if is_scripts_root(candidate):
             return candidate
     if os.environ.get("GOTHIC_STUDIO_DEV"):   # dev mode: scratch folder, never the repo
-        return start / ".devmod"
+        return _dev_root(start)
     return start                              # nothing found; FOUND stays False
 
 
 SCRIPTS = _find_scripts_root()
+
+#: True when running on the devdata/ stand-in rather than a real Gothic II mod.
+DEV_FIXTURE = bool(os.environ.get("GOTHIC_STUDIO_DEV")) and SCRIPTS.name == ".devmod"
 CONTENT = SCRIPTS / "Content"
 TOOLS = SCRIPTS / "tools"
 
