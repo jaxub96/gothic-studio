@@ -117,7 +117,7 @@ def routines():
 
 @lru_cache
 def heads():
-    """Head meshes actually referenced by this install - 6, not the G1 list of 14."""
+    """Head meshes referenced by the scripts in this install."""
     return sorted({h.upper() for h in _scan("**/*.d", r'"(HUM_HEAD_\w+)"')})
 
 
