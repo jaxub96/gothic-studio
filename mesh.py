@@ -265,8 +265,9 @@ def head_mesh(head_constant):
 
 
 @lru_cache(maxsize=32)
-def body_meshes(armor_instance=None):
-    """Every part of the worn body: an armor's .MDM if it has one, else naked."""
+def body_meshes(armor_instance=None, female=False):
+    """Every part of the worn body: an armor's .MDM if it has one, else naked
+    (the female body when `female`)."""
     if armor_instance and str(armor_instance) not in ("-1", "NO_ARMOR"):
         import gamedata
         visual = gamedata.item_visuals().get(str(armor_instance).upper(), "")
@@ -276,7 +277,8 @@ def body_meshes(armor_instance=None):
             parts = load_all(candidate)
             if parts:
                 return parts
-    return load_all("HUM_BODY_NAKED0.MDM")
+    return load_all("HUM_BODY_BABE0.MDM" if female else "HUM_BODY_NAKED0.MDM") \
+        or load_all("HUM_BODY_NAKED0.MDM")
 
 
 def body_mesh(armor_instance=None):

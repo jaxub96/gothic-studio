@@ -102,7 +102,8 @@ def character(npc):
     # An armor file usually holds more than one mesh - the garment plus the skin
     # that shows at the neck and hands, or a matching helm. Drawing only the
     # first leaves a hole where the neck should be.
-    parts = meshlib.body_meshes(None if naked else npc.armor)
+    parts = meshlib.body_meshes(None if naked else npc.armor,
+                                female=str(npc.gender).upper() == "FEMALE")
     for part in parts:
         add(part)
 
