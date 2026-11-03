@@ -222,7 +222,9 @@ class ModelView(QWidget):
                 models, w, h, yaw=self.yaw, pitch=self.pitch,
                 background=_rgb(THEME["bg_code"]),
                 zoom=self.zoom, pan=(self.pan[0] * scale, self.pan[1] * scale),
-                wireframe=self.wireframe, textured=self.textured)
+                wireframe=self.wireframe, textured=self.textured,
+                # dragging is already rendered small; smoothing it is wasted time
+                supersample=1 if scale < 1.0 else None)
         except Exception as exc:                     # never take the app down
             self.canvas.setPixmap(QPixmap())
             self.canvas.setText("preview unavailable: " + str(exc)[:80])

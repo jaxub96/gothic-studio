@@ -56,8 +56,14 @@ def build(parent: QWidget, npc, handlers) -> None:
 
     ui.section(layout, "Appearance")
 
+    # Only heads with a real name. The rest are internal variants nobody can
+    # tell apart by their constant - but keep the NPC's own head if it is one,
+    # so opening a vanilla NPC does not silently change it.
+    heads = [h for h in gamedata.heads() if h in labels.HEAD]
+    if npc.head and npc.head.upper() not in heads:
+        heads.append(npc.head.upper())
     ui.field(layout, "Head mesh",
-             ui.dropdown(labels.label_list(labels.HEAD, gamedata.heads()),
+             ui.dropdown(labels.label_list(labels.HEAD, heads),
                          labels.pretty(labels.HEAD, npc.head), setter("head")))
 
     faces = gamedata.faces()

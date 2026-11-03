@@ -114,10 +114,45 @@ def character(npc):
     return models
 
 
+#: Rendering is done at this multiple of the requested size and averaged back
+#: down. The rasteriser has no edge smoothing and samples textures at the
+#: nearest texel, so a plain render shows stair-stepped silhouettes and
+#: shimmering skin; averaging a 2x2 block per pixel fixes both.
+SUPERSAMPLE = 2
+SUPERSAMPLE_MAX_PIXELS = 4_000_000
+
+
 def render(models, width=320, height=460, yaw=25.0, pitch=8.0,
            background=(0xF5, 0xED, 0xD6), margin=0.06,
-           zoom=1.0, pan=(0.0, 0.0), wireframe=False, textured=True):
-    """Rasterise `models` to (width, height, rgb888 bytes).
+           zoom=1.0, pan=(0.0, 0.0), wireframe=False, textured=True,
+           supersample=None):
+    """Rasterise `models` to (width, height, rgb888 bytes), anti-aliased.
+
+    `supersample` is the oversampling factor (1 turns it off). The default is
+    SUPERSAMPLE when numpy is available and the frame is not huge; without
+    numpy the averaging would cost more than the render, so it is skipped.
+    Wireframes are 1px lines, which averaging would only wash out.
+    """
+    import fastpath
+    n = SUPERSAMPLE if supersample is None else int(supersample)
+    if (n < 2 or wireframe or not fastpath.HAVE_NUMPY
+            or width * height * n * n > SUPERSAMPLE_MAX_PIXELS):
+        return _render(models, width, height, yaw, pitch, background, margin,
+                       zoom, pan, wireframe, textured)
+
+    big = _render(models, width * n, height * n, yaw, pitch, background, margin,
+                  zoom, (pan[0] * n, pan[1] * n), wireframe, textured)
+    if not big:
+        return None
+    np = fastpath.np
+    frame = np.frombuffer(big[2], dtype=np.uint8).reshape(height, n, width, n, 3)
+    small = frame.mean(axis=(1, 3)).round().astype(np.uint8)
+    return width, height, small.tobytes()
+
+
+def _render(models, width, height, yaw, pitch, background, margin,
+            zoom, pan, wireframe, textured):
+    """One pass at exactly the size asked for. See `render`.
 
     Orthographic, so UV interpolation can be affine without visible warping.
     The camera frames everything automatically - which keeps a head and a full
