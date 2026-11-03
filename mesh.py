@@ -191,9 +191,51 @@ def parse_all(data, name=""):
             break
         piece = parse(data[at:at + 6 + clen], f"{name}#{len(meshes)}" if meshes else name)
         if piece:
+            if name.upper().endswith(".MDM"):
+                _skin(piece, data, at + 6 + clen)
             meshes.append(piece)
         at = _find_mesh_chunk(data, at + 6 + max(clen, 1))
     return meshes
+
+
+CHUNK_SKIN = 0xB1FF
+
+
+def _skin(piece, data, at):
+    """Replace a body part's stored positions with its skinned bind pose.
+
+    The positions stored beside the triangles are not reliable. For the naked
+    body they are the skeleton-space pose plus a fixed shift, but an armor's
+    differ from it by up to ~15 units and not by a constant - drawn as stored,
+    an armor sits behind the naked body and the head floats off its collar.
+    The real data is the weight list in the chunk that follows the mesh: per
+    vertex, a few (weight, bone-local position, bone) entries. Summing
+    weight * (bone matrix * position) lands every part in the skeleton's own
+    space, which is also where the head bone's matrix puts the head.
+
+    Leaves the stored positions alone if there is no skeleton or the weight
+    chunk does not parse, so a damaged file still draws.
+    """
+    bones = list(skeleton().values())
+    try:
+        cid, clen = struct.unpack_from("<HI", data, at)
+        if cid != CHUNK_SKIN or not bones:
+            return
+        pos = at + 6 + 4                      # skip the u32 stream length
+        out = []
+        for _ in piece.positions:
+            n = struct.unpack_from("<I", data, pos)[0]
+            pos += 4
+            x = y = z = 0.0
+            for _ in range(n):
+                w, px, py, pz, node = struct.unpack_from("<4fB", data, pos)
+                pos += 17
+                qx, qy, qz = transform_point(bones[node], (px, py, pz))
+                x, y, z = x + w * qx, y + w * qy, z + w * qz
+            out.append((x, y, z))
+        piece.positions = out
+    except (struct.error, IndexError):
+        return
 
 
 @lru_cache(maxsize=64)
@@ -314,75 +356,16 @@ def _neck_hole(body, band=10.0, radius=14.0):
             sum(p[2] for p in ring) / len(ring))
 
 
-@lru_cache(maxsize=1)
-def _head_offset():
-    """Translation putting the head bone's frame into the body meshes' space.
-
-    The skeleton and the meshes use different origins, and they differ on all
-    three axes - so a purely vertical shift leaves the head sitting behind the
-    neck, which reads as "detached" from any angle except dead front.
-
-    Each axis uses the landmark that is actually reliable for it:
-
-      * Y from the ground. Both the skeleton and the body stand on it, so
-        aligning their lowest points is exact. (Not the neck: the mesh's top is
-        the neck *stump*, above the neck *joint*, and using it floats the head.)
-      * X and Z from the neck hole of the naked body - the ring of vertices the
-        head plugs into. (Not the feet: the toe bones sit at the toes while the
-        mesh's sole spans heel to toe, so they are not the same landmark.)
-
-    Measured once on the naked body and reused for every armor, since all the
-    armors are built on that same body.
-    """
-    bones = skeleton()
-    body = load("HUM_BODY_NAKED0.MDM")
-    head = None
-    for candidate in ("HUM_HEAD_PONY", "HUM_HEAD_BALD", "HUM_HEAD_FIGHTER"):
-        head = head_mesh(candidate)
-        if head:
-            break
-    head_bone = bones.get("BIP01 HEAD") if bones else None
-    if not head_bone or not body or not head:
-        return None
-
-    dy = body.bounds()[0][1] - min(m[7] for m in bones.values())
-
-    placed = list(head_bone)
-    placed[7] += dy
-    hole = _neck_hole(body)
-    if not hole:
-        return (0.0, dy, 0.0)
-
-    # Line the head's own neck-end up with that hole.
-    pts = [transform_point(placed, p) for p in head.positions]
-    low = min(p[1] for p in pts)
-    stump = [p for p in pts if p[1] < low + 12.0]
-    hx = sum(p[0] for p in stump) / len(stump)
-    hz = sum(p[2] for p in stump) / len(stump)
-    return (hole[0] - hx, dy, hole[2] - hz)
-
-
 def head_placement(body=None, head=None):
     """Matrix putting a head mesh into the body meshes' space.
 
-    The bone supplies the orientation - a head mesh's own "up" is +X, not +Y -
-    and `_head_offset()` supplies the position.
-
-    There is deliberately no per-armor adjustment. An earlier version nudged
-    the head to meet each armor's collar, which papered over a wrong offset and
-    made the head shift about depending on what the character wore.
+    A head mesh is stored in its own bone-local frame (its "up" is +X, not +Y),
+    and the head bone's world matrix is exactly the transform that places it.
+    Body parts are skinned into the same skeleton space (see `_skin`), so no
+    extra offset is needed - nothing is fitted or measured.
     """
-    bones = skeleton()
-    head_bone = bones.get("BIP01 HEAD")
-    offset = _head_offset()
-    if not head_bone or offset is None:
-        return None
-
-    placed = list(head_bone)
-    placed[3] += offset[0]
-    placed[7] += offset[1]
-    placed[11] += offset[2]
-    return tuple(placed)
+    head_bone = skeleton().get("BIP01 HEAD")
+    return tuple(head_bone) if head_bone else None
 
 
 if __name__ == "__main__":

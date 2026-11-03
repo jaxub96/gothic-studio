@@ -189,16 +189,29 @@ def main():
                 detached.append(f"{armor} ({collar:.0f} < {head_underside:.0f})")
         check(not detached, f"head meets the neck on every armor{'' if not detached else ': ' + ', '.join(detached)}")
 
-        # ...and horizontally. A vertical-only offset leaves the head sitting
-        # behind the neck, which only shows up from the side.
-        hole = mesh._neck_hole(mesh.body_mesh(None))
-        placed = [mesh.transform_point(placement, p) for p in head.positions]
-        low = min(p[1] for p in placed)
-        stump = [p for p in placed if p[1] < low + 12.0]
-        off_x = abs(sum(p[0] for p in stump) / len(stump) - hole[0])
-        off_z = abs(sum(p[2] for p in stump) / len(stump) - hole[2])
-        check(off_x < 1.5 and off_z < 1.5,
-              f"head is centred on the neck hole (off by x={off_x:.2f} z={off_z:.2f})")
+        # ...and every body must share the naked body's frame, front to back too.
+        # Armor files store positions that are NOT in that frame (they sit up to
+        # ~15 units behind), so mesh.py skins them from their bone weights; if
+        # that regresses, the head floats in front of the collar from the side.
+        def frame(parts):
+            ps = [p for part in parts for p in part.positions]
+            return (min(p[1] for p in ps), (min(p[2] for p in ps) + max(p[2] for p in ps)) / 2)
+
+        floor0, mid0 = frame(mesh.body_meshes(None))
+        drifted = []
+        for armor in gamedata.armors():
+            parts = mesh.body_meshes(armor)
+            if not parts:
+                continue
+            floor, mid = frame(parts)
+            if abs(floor - floor0) > 4 or abs(mid - mid0) > 8:
+                drifted.append(f"{armor} (floor {floor - floor0:+.1f}, depth {mid - mid0:+.1f})")
+        check(not drifted, "every armor sits in the naked body's frame"
+              + ("" if not drifted else ": " + ", ".join(drifted[:5])))
+
+        head_bone = mesh.skeleton()["BIP01 HEAD"]
+        check(tuple(placement) == tuple(head_bone),
+              "head is placed by the head bone alone, with no fitted offset")
 
         multi = mesh.load_all("ARMOR_KDF_H.MDM")
         check(len(multi) > 1, f"multi-part armor files are fully read ({len(multi)} meshes)")
