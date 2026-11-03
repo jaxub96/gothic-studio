@@ -7,11 +7,10 @@ can look at while picking a face, body or armor.
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QImage, QPixmap
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 import textures
 import ui
-from theme import THEME
 
 # A head texture is a UV sheet: the face sits in the middle, ears and the back
 # of the head wrap around the edges. Cropping to the middle gives a portrait

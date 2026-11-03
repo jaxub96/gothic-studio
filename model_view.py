@@ -36,7 +36,6 @@ MIN_ZOOM, MAX_ZOOM = 0.35, 8.0
 #: While dragging, render roughly this many pixels regardless of how big the
 #: panel is, so turning the figure stays smooth on a maximised window.
 DRAG_TARGET_PIXELS = 55_000
-VIEWS = {"F": (180, "Front"), "B": (0, "Back"), "L": (90, "Left"), "R": (270, "Right")}
 
 
 class _Canvas(QLabel):
@@ -112,12 +111,6 @@ class ModelView(QWidget):
             "F / B / L / R for views, Home resets, "
             "W wireframe, T textures.")
         col.addWidget(self.canvas, stretch=1)
-
-    def _turn_left(self):
-        self.turn(-45)
-
-    def _turn_right(self):
-        self.turn(45)
 
     # ------------------------------------------------------------ interaction
     def _set_flag(self, attr, value):

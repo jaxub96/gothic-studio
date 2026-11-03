@@ -65,6 +65,8 @@ def _find_scripts_root():
     for candidate in (start, *start.parents):
         if is_scripts_root(candidate):
             return candidate
+    if os.environ.get("GOTHIC_STUDIO_DEV"):   # dev mode: scratch folder, never the repo
+        return start / ".devmod"
     return start                              # nothing found; FOUND stays False
 
 
@@ -89,9 +91,6 @@ LOG_DIR = CONTENT / "Story" / "Log_Entries"
 # ZenGin reads ANSI, never UTF-8. This install is Polish, so CP1250.
 # Writing UTF-8 puts mojibake in the game and in zSpy.
 ENCODING = "cp1250"
-
-#: Where the binaries come from, if someone needs to fetch one.
-GDC_RELEASES = "https://github.com/dzieje-khorinis/DaedalusCompiler/releases"
 
 
 def _gdc_name():
@@ -150,7 +149,6 @@ def find_gdc_runtime():
 
 
 GDC = find_gdc()
-GDC_RUNTIME = find_gdc_runtime()
 GOTHIC_SRC = CONTENT / "Gothic.src"
 CHECK_DIR = SCRIPTS / ".check"
 

@@ -256,30 +256,4 @@ def mono_font():
     f.setStyleHint(QFont.StyleHint.Monospace)
     return f
 
-# ── Compatibility aliases ─────────────────────────────────────────────────────
-# The NPC tabs were written against a flat set of colour names. Rather than
-# rewrite five files, map the old names onto THEME. Change colours in THEME
-# above; nothing here needs touching.
-
 THEME.setdefault("accent_gold", "#a07820")
-
-BG_DARK   = THEME["bg_main"]
-BG_MEDIUM = THEME["bg_panel"]
-BG_LIGHT  = THEME["bg_input"]
-
-ACCENT_PRIMARY   = THEME["accent_primary"]
-ACCENT_SECONDARY = THEME["accent_secondary"]
-ACCENT_HOVER     = THEME["accent_hover"]
-
-TEXT_PRIMARY   = THEME["text_primary"]
-TEXT_SECONDARY = THEME["text_secondary"]
-TEXT_DARK      = THEME["text_muted"]
-
-BORDER_COLOR = THEME["bg_border"]
-INPUT_BORDER = THEME["bg_input_border"]
-CODE_BG      = THEME["bg_code"]
-
-WARNING_COLOR = THEME["accent_gold"]
-SUCCESS_COLOR = THEME["accent_secondary"]
-
-FONT_PRIMARY = (THEME["font_ui"].split(",")[0].strip(), THEME["font_size_code"])

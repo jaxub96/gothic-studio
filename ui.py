@@ -16,7 +16,7 @@ Rules
 Layout vocabulary
   section(...)      a titled group of fields
   field(...)        label above a control, with an optional hint below
-  row()/column()    plain containers with the standard gap
+  row()             plain container with the standard gap
 
 Controls
   text_input  dropdown  search_dropdown  search_input
@@ -24,7 +24,6 @@ Controls
 
 Buttons
   button(text, on_click, variant=...)  variants: primary, default, subtle, danger
-  icon_button(glyph, label, tooltip, on_click)   glyph AND a word
 """
 
 from PyQt6.QtCore import Qt
@@ -48,7 +47,6 @@ LABEL_W = 224           # label column - fits the longest label at this size
 NUMBER_W = 128          # numeric entry fields
 POPUP_ITEMS = 12        # rows a dropdown shows before it scrolls
 
-FONT_HEADING = THEME["font_size_small"]
 FONT_LABEL = THEME["font_size_small"]
 FONT_HINT = THEME["font_size_tiny"]
 FONT_VALUE = THEME["font_size_small"]
@@ -104,12 +102,6 @@ def divider():
 
 
 # --- containers ---------------------------------------------------------------
-
-def column(spacing=GAP, margins=(0, 0, 0, 0)):
-    lay = QVBoxLayout()
-    lay.setSpacing(spacing)
-    lay.setContentsMargins(*margins)
-    return lay
 
 
 def row(spacing=GAP):
@@ -466,21 +458,6 @@ def button(text, on_click=None, variant=DEFAULT, tooltip="", compact=False):
     return b
 
 
-def icon_button(glyph, text, on_click=None, tooltip="", variant=DEFAULT):
-    """A compact button that still says what it does.
-
-    Glyph-only buttons are a discoverability trap - the meaning lives in a
-    tooltip nobody hovers. Every one of these carries a word as well.
-    """
-    caption = f"{glyph} {text}".strip() if text else glyph
-    return button(caption, on_click, variant, tooltip or text, compact=True)
-
-
-def toolbar():
-    lay = row(GAP // 2)
-    return lay
-
-
 # --- legacy style keys --------------------------------------------------------
 # The chat editor was written against theme.SS. Re-exporting the same keys from
 # here means it picks up the standard look with a one-line import change,
@@ -521,17 +498,6 @@ SS = {
         f"  border:none; font-size:{FONT_LABEL}; }}"
         f"QPushButton:hover {{ color:{THEME['accent_primary']}; }}"),
 }
-
-
-def panel_header(text):
-    """The bar at the top of a preview pane."""
-    w = QLabel("  " + text)
-    w.setFixedHeight(26)
-    w.setStyleSheet(
-        f"color:{THEME['text_muted']}; font-size:{FONT_HINT}; font-weight:700; "
-        f"letter-spacing:2px; background:{THEME['bg_bar']}; "
-        f"border-bottom:{THEME['border_width']} solid {THEME['bg_border']};")
-    return w
 
 
 def placeholder(text):

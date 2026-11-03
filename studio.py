@@ -8,12 +8,16 @@ instance name, the Dialog tab picks it up as its NPC ID, so you never type
 the same identifier twice.
 """
 
+import os
 import sys
 from pathlib import Path
 
+if "--dev" in sys.argv:       # must be set before project is imported
+    os.environ.setdefault("GOTHIC_STUDIO_DEV", "1")
+
 from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import (QApplication, QLabel, QMainWindow, QMessageBox,
-                             QPushButton, QStatusBar, QTabWidget)
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QMessageBox, QStatusBar,
+                             QTabWidget)
 
 import firstrun
 import project
@@ -185,6 +189,9 @@ def diagnose():
     return 0
 
 
+DEV = "--dev" in sys.argv   # skip the Gothic II prompt; run without a mod
+
+
 def main():
     if "--check" in sys.argv:
         return diagnose()
@@ -204,7 +211,7 @@ def main():
     pal.setColor(QPalette.ColorRole.HighlightedText, QColor(THEME["bg_main"]))
     app.setPalette(pal)
 
-    if not project.FOUND and not firstrun.ensure():
+    if not DEV and not project.FOUND and not firstrun.ensure():
         return                                # asked, declined; nothing to show
 
     _load_pages()

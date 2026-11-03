@@ -1,4 +1,4 @@
-"""
+r"""
 config.py - the one setting Gothic Studio remembers: where your mod lives.
 
 Kept deliberately tiny and dependency-free (no Qt, no project import) so that

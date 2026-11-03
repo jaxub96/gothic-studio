@@ -295,42 +295,6 @@ def skeleton(name="HUMANS.MDH"):
         return {}
 
 
-@lru_cache(maxsize=1)
-def _skeleton_to_mesh_shift():
-    """How far the skeleton sits below the meshes, vertically.
-
-    The skeleton is pelvis-origin - BIP01 is at 0 with the toes down at about
-    -100 - while the body meshes are feet-origin, standing on y=0. Both are
-    standing on the same ground, so aligning their lowest points is what lines
-    them up.
-
-    Do NOT derive this from the neck: the body mesh's top is the neck *stump*,
-    which sits above the neck *joint*, and using it floats the head off the
-    shoulders by around 15 units.
-    """
-    bones = skeleton()
-    body = load("HUM_BODY_NAKED0.MDM")
-    if not bones or not body:
-        return None
-    skeleton_floor = min(m[7] for m in bones.values())
-    return body.bounds()[0][1] - skeleton_floor
-
-
-def neck_height(body, radius=13.0):
-    """Height of a body's neck opening.
-
-    Not the bounding-box top: pauldrons, hoods and high collars all sit higher
-    than the neck. Taking the tallest vertex near the vertical axis finds the
-    collar itself, which is what the head has to meet - and that works equally
-    for plate armor and for a mage's robe.
-    """
-    if not body:
-        return None
-    near = [p[1] for p in body.positions
-            if abs(p[0]) < radius and abs(p[2]) < radius]
-    return max(near) if near else body.bounds()[1][1]
-
-
 def _neck_hole(body, band=10.0, radius=14.0):
     """Centre (x, z) and top (y) of a body's neck opening.
 

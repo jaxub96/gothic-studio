@@ -1,15 +1,12 @@
 """
 npc_page.py - the NPC half of the studio, as a plain QWidget.
 
-Was Gothic-2-NPC-Studio/ui/app.py. The differences: it is a widget rather
-than its own QMainWindow, it saves into Content/Story/NPC in CP1250, it
-validates identifiers before saving, and it announces the instance name it
-built so the Dialog page can pick it up.
+Saves into Content/Story/NPC in CP1250, validates identifiers before saving,
+and announces the instance name it built so the Dialog page can pick it up.
 """
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (QFileDialog, QFrame, QHBoxLayout, QLabel,
-                             QMessageBox, QPushButton, QTabWidget, QTextEdit,
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtWidgets import (QFileDialog, QMessageBox, QTabWidget, QTextEdit,
                              QVBoxLayout, QWidget)
 
 import npc_gen
@@ -19,7 +16,7 @@ from npc_handlers import NpcHandlers
 from npc_model import Npc
 from model_view import ModelView
 from npc_tabs import general_tab, inventory_tab, skills_tab, stats_tab, visual_tab
-from theme import THEME, DaedalusHighlighter, mono_font
+from theme import DaedalusHighlighter, mono_font
 
 
 class NpcPage(QWidget):

@@ -1,19 +1,16 @@
 """
 dialog_page.py - the Dialog half of the studio, as a plain QWidget.
 
-Was Daedalogue/daedalogue.py. The scene tree, chat editor and code generator
-are unchanged; what is new is that it saves into Content/Story/Dialoge as
-CP1250, writes the log-topic constants file that the old tool generated but
-never emitted, and can take its NPC id straight from the NPC page.
+The scene tree, chat editor and code generator. Saves into Content/Story/Dialoge
+as CP1250, writes the log-topic constants file, and can take its NPC id straight
+from the NPC page.
 """
 
 import os
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QComboBox, QFileDialog, QFrame, QHBoxLayout,
-                             QLabel, QLineEdit, QMessageBox, QPushButton,
-                             QScrollArea, QSplitter, QStackedWidget, QTextEdit,
-                             QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QFileDialog, QMessageBox, QScrollArea, QSplitter,
+                             QStackedWidget, QTextEdit, QVBoxLayout, QWidget)
 
 import gamedata
 import project
@@ -23,7 +20,7 @@ from dialog_gen import (DialogBlock, export_block_name, export_followup_name,
                         export_plain_dialog, parse_dia_file, parse_plain_dialog,
                         sanitize)
 from dialog_widgets import BlockEditor, BlockListItem
-from theme import SS, THEME, DaedalusHighlighter, mono_font
+from theme import THEME, DaedalusHighlighter, mono_font
 
 
 class DialogPage(QWidget):
@@ -428,8 +425,7 @@ class DialogPage(QWidget):
         path = project.write_script(target, self._dia_text())
         self.current_file_path = path
 
-        # The log-topic constants. The old tool generated these and then never
-        # wrote them, so any dialog with a log entry could not compile.
+        # The log-topic constants: a dialog with a log entry does not compile without them.
         consts = generate_constants_file(ni, blocks, tuple(gamedata.log_topics()))
         msg = f"Saved as CP1250:\n  {path}"
         if consts:

@@ -1,9 +1,6 @@
 """
 gamedata.py - reads the real identifiers straight out of Content/.
 
-This replaces the old hand-written data/*.py tables, which were Gothic 1 data
-and did not match this install (512 of 523 item ids did not exist here).
-
 Nothing in here is a hardcoded list of game content. If you add an item or a
 guild to the mod, it shows up in the pickers on the next launch. Every function
 is cached, so the disk scan happens once.

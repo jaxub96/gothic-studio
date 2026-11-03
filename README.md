@@ -13,6 +13,7 @@ in `Content/`.
 ```
 pip install -r requirements.txt
 python studio.py          # or run.bat on Windows, ./run.sh on macOS/Linux
+python studio.py --dev    # no Gothic II needed (dev.bat); scratch data goes in .devmod/
 ```
 
 **On a Mac** — `cd gothic-studio && ./build-macos.sh` builds
@@ -111,7 +112,7 @@ Plus:
 |---|---|
 | `studio.py` | The window. Two tabs + the Compile-check button. Start here. |
 | `build_exe.py` | PyInstaller wrapper that produces `dist/GothicStudio.exe`. |
-| `selftest.py` | Headless end-to-end check: drives every widget, then compiles with gdc. |
+| `selftest.py` | Headless end-to-end check: drives every widget, then compiles with gdc. Without a mod it runs only the data-independent checks. |
 | `project.py` | **Every path and the encoding.** Change this if you move the tool. |
 | `gamedata.py` | Scrapes `Content/` for real identifiers. `python gamedata.py` prints what it found. |
 | `labels.py` | Readable names for constants (`GIL_MIL` -> "Militia"). Presentation only. |

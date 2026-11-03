@@ -1,5 +1,5 @@
 """
-dialog_gen.py (was Daedalogue/daedalus_gen.py) — Data models plus everything that turns them into Daedalus
+dialog_gen.py — Data models plus everything that turns them into Daedalus
 (.d) code, plain-text dialog exports, and back again (parsing). No Qt here.
 """
 
@@ -165,11 +165,11 @@ def generate_dia_file(npc_name, npc_id, blocks, emit_exit=True):
     en = f"DIA_{safe}_EXIT"
     exit_lines = ["// " + "="*60, "// \t\t\t\t\tEXIT", "// " + "="*60,
             f"instance {en} (C_INFO)", "{",
-            f"\tnpc\t\t\t= {npc_id};", f"\tnr\t\t\t= 999;",
+            f"\tnpc\t\t\t= {npc_id};", "\tnr\t\t\t= 999;",
             f"\tcondition\t= {en}_Condition;", f"\tinformation\t= {en}_Info;",
-            f"\tpermanent\t= 1;", f"\tdescription = DIALOG_ENDE;", "};", "",
-            f"FUNC int {en}_Condition()", "{", f"\treturn 1;", "};", "",
-            f"FUNC VOID {en}_Info()", "{", f"\tAI_StopProcessInfos\t(self);", "};", ""]
+            "\tpermanent\t= 1;", "\tdescription = DIALOG_ENDE;", "};", "",
+            f"FUNC int {en}_Condition()", "{", "\treturn 1;", "};", "",
+            f"FUNC VOID {en}_Info()", "{", "\tAI_StopProcessInfos\t(self);", "};", ""]
 
     if emit_exit:
         out += exit_lines
@@ -182,9 +182,9 @@ def generate_dia_file(npc_name, npc_id, blocks, emit_exit=True):
                 f"\tnpc\t\t\t= {npc_id};", f"\tnr\t\t\t= {b.nr};",
                 f"\tcondition\t= {bn}_Condition;", f"\tinformation\t= {bn}_Info;",
                 f"\tpermanent\t= {b.permanent};"]
-        if b.important: out.append(f"\timportant\t= 1;")
+        if b.important: out.append("\timportant\t= 1;")
         if b.description and not b.important: out.append(f'\tdescription\t= "{b.description}";')
-        if b.is_trade: out.append(f"\tTrade\t\t= 1;")
+        if b.is_trade: out.append("\tTrade\t\t= 1;")
         out += ["};", "", f"FUNC int {bn}_Condition()", "{"]
         if b.condition_expr.strip():
             for cl in b.condition_expr.strip().splitlines(): out.append(f"\t{cl}")

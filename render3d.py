@@ -72,22 +72,6 @@ def _submesh_texture(sub):
     return None
 
 
-def _mesh_texture(mesh_obj):
-    """The first texture a mesh names anywhere in its materials."""
-    for name in getattr(mesh_obj, "material_textures", []):
-        ref = textures.find(name)
-        if ref:
-            decoded = textures.decode(ref)
-            if decoded:
-                return decoded
-    return None
-
-
-def auto_models(mesh_list):
-    """Wrap meshes, giving each the texture its material list names."""
-    return [Model(m, _mesh_texture(m)) for m in mesh_list if m]
-
-
 def character(npc):
     """Assemble one NPC: body (or its armor), plus the head on the head bone.
 
@@ -255,9 +239,7 @@ def render(models, width=320, height=460, yaw=25.0, pitch=8.0,
         # Barycentric weights are linear in screen space, so step them across
         # the scanline instead of recomputing two cross products per pixel.
         a0 = (sy[1] - sy[2]) * inv_area
-        b0 = (sx[2] - sx[1]) * inv_area
         a1 = (sy[2] - sy[0]) * inv_area
-        b1 = (sx[0] - sx[2]) * inv_area
 
         z0, z1, z2 = sz
         if tex:
