@@ -25,6 +25,28 @@ def _skip(text, i):
     return i
 
 
+def strip_comments(text):
+    """`text` with every // and /* */ comment blanked out, strings and line breaks kept.
+
+    For scanning identifiers only (pickers, validation): vanilla parks whole blocks
+    of old items in /* */, and those do not exist for the compiler. Never use it to
+    read a file back in - a dialog's spoken text lives in its // comments.
+    """
+    out, i, n = [], 0, len(text)
+    while i < n:
+        j = _skip(text, i)
+        if j == i:
+            k = i + 1
+            while k < n and text[k] not in '"/':
+                k += 1
+            out.append(text[i:k]); i = k
+        elif text[i] == '"':
+            out.append(text[i:j]); i = j
+        else:
+            out.append("\n" * text.count("\n", i, j)); i = j
+    return "".join(out)
+
+
 def match_brace(text, start):
     """Index of the `}` that closes the `{` at text[start], or -1."""
     depth, i, n = 0, start, len(text)

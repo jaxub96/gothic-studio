@@ -103,6 +103,18 @@ def export_block_name(npc_id, block_name):
     if not bn.startswith("DIA_"): bn = f"DIA_{safe}_{bn}"
     return bn
 
+KNOWSINFO_RE = re.compile(r'(Npc_KnowsInfo\s*\(\s*\w+\s*,\s*)(\w+)(\s*\))', re.I)
+
+def resolve_condition(expr, npc_id, blocks):
+    """Npc_KnowsInfo(other, FollowMe) -> Npc_KnowsInfo(other, DIA_<npc>_FollowMe).
+
+    In the app a scene is called by its short name, but the game only knows the
+    exported instance. Names that are not a scene of this file stay as written.
+    """
+    scenes = {sanitize(b.name).upper(): export_block_name(npc_id, b.name)
+              for b in blocks if b.name and not b.is_followup and not b.is_exit}
+    return KNOWSINFO_RE.sub(lambda m: m.group(1) + scenes.get(m.group(2).upper(), m.group(2)) + m.group(3), expr)
+
 def export_followup_name(parent_bn, block_name):
     suffix = sanitize(block_name) if block_name else "Choice"
     return f"{parent_bn}_{suffix}"
@@ -201,7 +213,7 @@ def generate_dia_file(npc_name, npc_id, blocks, emit_exit=True):
         if b.is_trade: out.append("\tTrade\t\t= 1;")
         out += ["};", "", f"FUNC int {bn}_Condition()", "{"]
         if b.condition_expr.strip():
-            for cl in b.condition_expr.strip().splitlines(): out.append(f"\t{cl}")
+            for cl in resolve_condition(b.condition_expr.strip(), npc_id, blocks).splitlines(): out.append(f"\t{cl}")
         else:
             out.append("\treturn 1;")
         out += ["};", "", f"FUNC VOID {bn}_Info()", "{"]

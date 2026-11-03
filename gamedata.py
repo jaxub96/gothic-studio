@@ -9,12 +9,14 @@ is cached, so the disk scan happens once.
 import re
 from functools import lru_cache
 
+from daedalus_read import strip_comments
 from project import CONTENT, ENCODING, iglob
 
 
 def _read(path):
+    """A script's text without its comments: what is commented out does not exist."""
     try:
-        return path.read_text(encoding=ENCODING, errors="ignore")
+        return strip_comments(path.read_text(encoding=ENCODING, errors="ignore"))
     except OSError:
         return ""
 
@@ -34,7 +36,7 @@ def _scan(globpat, pattern):
 @lru_cache
 def items():
     out = {}
-    for f in sorted(iglob(CONTENT / "Items", "*.d")):
+    for f in sorted(iglob(CONTENT / "Items", "**/*.d")):
         for seg in re.split(r"(?im)^[ \t]*INSTANCE[ \t]+", _read(f))[1:]:
             m = re.match(r"(\w+)\s*\(\s*C_Item", seg, re.I)
             if not m:
@@ -59,7 +61,7 @@ def item_visuals():
     texture - so it is the first link in resolving an armor preview.
     """
     out = {}
-    for f in sorted(iglob(CONTENT / "Items", "*.d")):
+    for f in sorted(iglob(CONTENT / "Items", "**/*.d")):
         for seg in re.split(r"(?im)^[ \t]*INSTANCE[ \t]+", _read(f))[1:]:
             m = re.match(r"(\w+)\s*\(\s*C_Item", seg, re.I)
             if not m:
@@ -208,12 +210,19 @@ def npc_instances():
 
 @lru_cache
 def xp_constants():
-    return _scan("Story/XP_Constants.d", r"^\s*const\s+int\s+(XP_\w+)")
+    """XP_ constants, and XP_ vars too: vanilla XP_Ambient is a var and works the same in B_GivePlayerXP."""
+    return _scan("Story/XP_Constants.d", r"^\s*(?:const|var)\s+int\s+(XP_\w+)")
 
 
 @lru_cache
 def log_topics():
-    return _scan("Story/Log_Entries/*.d", r"^\s*const\s+string\s+(TOPIC_\w+)")
+    return _scan("Story/Log_Entries/**/*.d", r"^\s*const\s+string\s+(TOPIC_\w+)")
+
+
+@lru_cache
+def info_instances():
+    """Every dialog (C_INFO instance) in Content/ - what Npc_KnowsInfo can name."""
+    return _scan("**/*.d", r"^\s*instance\s+(\w+)\s*\(\s*C_INFO\s*\)")
 
 
 @lru_cache
@@ -264,6 +273,7 @@ def unknown(kind, value):
         "head": heads,
         "npc": lambda: npc_instances().keys(),
         "xp": xp_constants,
+        "info": info_instances,
     }
     if kind not in table:
         return False
@@ -275,5 +285,5 @@ if __name__ == "__main__":
     # `python gamedata.py` prints what it found - handy after editing a regex.
     for fn in (items, armors, guilds, npctypes, tactics, routines, heads,
                body_textures, faces, overlays, voices, npc_instances,
-               xp_constants, log_topics, waypoints):
+               xp_constants, log_topics, info_instances, waypoints):
         print(f"{fn.__name__:16} {len(fn())}")

@@ -61,6 +61,18 @@ def main():
               "fight tactics carry no .d suffix")
         check("TA_Position" not in gamedata.routines(),
               "TA_Position (which does not exist) is not offered")
+        check(not gamedata.unknown("item", "ItMw_1H_Mil_Sword"),
+              "vanilla items in Items/_base are offered")
+        check(len(gamedata.armors()) > 20, "vanilla armors in Items/_base are offered")
+        check(gamedata.unknown("item", "ItMw_2H_Axe_L_03"),
+              "items inside a /* */ comment block are not offered")
+        check(len(gamedata.info_instances()) > 50, "dialog instances are found for Npc_KnowsInfo")
+
+    import daedalus_read
+    src = 'a; // c "x"\n/* old\ninstance X (C_Item) */\nname = "http://y /* z";\n'
+    out = daedalus_read.strip_comments(src)
+    check(out.count("\n") == src.count("\n") and "C_Item" not in out and '"http://y /* z"' in out,
+          "comment skipping keeps strings and line numbers, drops /* */ and // text")
 
     # ---------------------------------------------------------- NPC widgets
     print("\ndriving every NPC widget:")
@@ -81,9 +93,9 @@ def main():
 
     if HAVE_MOD:
         inv = tabs.widget([tabs.tabText(i) for i in range(tabs.count())].index("Inventory"))
-        tree = inv.findChildren(QTreeWidget)[0]
-        tree.setCurrentItem(tree.topLevelItem(1).child(0))
-        check(str(npc.armor).upper().startswith("ITAR_"), "armor tree yields an ITAR_ id")
+        armor = [c for c in inv.findChildren(QComboBox) if c.findText("(no armor)") >= 0][0]
+        armor.setCurrentIndex(1)
+        check(str(npc.armor).upper().startswith("ITAR_"), "armor dropdown yields an ITAR_ id")
 
         search = [w for w in inv.findChildren(QLineEdit)
                   if (w.placeholderText() or "").startswith("Search")][0]
@@ -274,6 +286,25 @@ def main():
     if HAVE_MOD:
         check("DIA_GRD_001_ARIDEUS_EXIT" not in text,
               "suppresses a duplicate EXIT block")
+
+    # a condition may name a sibling scene by its short name; the export must use the instance
+    b2, ed2 = dlg._add_block()
+    b2.name = "SELFTEST2"
+    b2.condition_expr = "if (Npc_KnowsInfo (other, SELFTEST)) { return TRUE; };"
+    b2.entries = [dialog_gen.DialogLine("self", "Dalej.")]
+    ed2.load_block(b2)
+    text = dlg._dia_text()
+    check("Npc_KnowsInfo (other, DIA_GRD_001_ARIDEUS_SELFTEST)" in text,
+          "a sibling scene name in a condition exports as its DIA_ instance")
+    check(not any("condition names" in p for p in dlg._problems()),
+          "a sibling scene name in a condition validates")
+    b2.condition_expr = "if (Npc_KnowsInfo (other, NoSuchScene)) { return TRUE; };"
+    ed2.load_block(b2)
+    check(any("NoSuchScene" in p for p in dlg._problems()),
+          "an unknown dialog name in a condition is reported")
+    b2.condition_expr = "if (Npc_KnowsInfo (other, SELFTEST)) { return TRUE; };"
+    ed2.load_block(b2)
+    text = dlg._dia_text()
 
     # ---------------------------------------------------------- round-trip
     existing = project.DIA_DIR / "DIA_GRD_001_Arideus.d"

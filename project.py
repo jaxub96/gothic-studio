@@ -214,6 +214,19 @@ def compile_check():
     to 'file:line:col: error: ...' - the same thing tools/lint-gdc-output.ps1
     prints, minus the PowerShell.
     """
+    # With Ikarus/LeGo on, plain gdc fails on their loop macros. On the mod's own Mac
+    # setup `gothic build check` compiles the way the real build does (loop-converted
+    # copy, nothing installed), so use it when it sits beside the mod.
+    gothic = SCRIPTS.parents[3] / "gothic-wine" / "gothic" if len(SCRIPTS.parents) > 3 else None
+    if gothic and gothic.is_file() and os.access(gothic, os.X_OK):
+        proc = subprocess.run([str(gothic), "build", "check"], capture_output=True, text=True, errors="replace")
+        out = (proc.stdout or "") + (proc.stderr or "")
+        if "CHECK OK" in out:
+            return True, []
+        lines = out.splitlines()
+        tail = next((lines[i + 1:] for i, ln in enumerate(lines) if "Errors:" in ln), lines[-8:])
+        return False, [ln.strip() for ln in tail if ln.strip()]
+
     gdc, runtime = find_gdc(), find_gdc_runtime()
     if not gdc.is_file():
         return False, [f"gdc not found: {gdc}",

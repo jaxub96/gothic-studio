@@ -18,7 +18,7 @@ import ui
 from dialog_gen import (DialogBlock, export_block_name, export_followup_name,
                         generate_constants_file, generate_dia_file,
                         export_plain_dialog, parse_dia_file, parse_plain_dialog,
-                        sanitize)
+                        resolve_condition, sanitize, KNOWSINFO_RE)
 from dialog_widgets import BlockEditor, BlockListItem
 from theme import THEME, DaedalusHighlighter, mono_font
 
@@ -376,7 +376,7 @@ class DialogPage(QWidget):
         self.dia_preview.setPlainText(self._dia_text())
         self.text_preview.setPlainText(export_plain_dialog(self.blocks))
 
-    def _validate(self):
+    def _problems(self):
         problems = []
         ni = self._npc_id()
         if not ni:
@@ -397,12 +397,25 @@ class DialogPage(QWidget):
                 if kind == "routine" and e.routine and e.routine.upper() != "START":
                     pass  # routine names are per-NPC strings, not global symbols
 
+        # Npc_KnowsInfo must name a dialog instance: one in Content/ or a scene of this file
+        own = {export_block_name(ni or "NPC", b.name).upper() for b in blocks if not b.is_followup and not b.is_exit}
+        for b in blocks:
+            if b.is_followup or not b.condition_expr.strip():
+                continue
+            for m in KNOWSINFO_RE.finditer(resolve_condition(b.condition_expr, ni or "NPC", blocks)):
+                if m.group(2).upper() not in own and gamedata.unknown("info", m.group(2)):
+                    problems.append(f"Scene '{b.name}': condition names '{m.group(2)}', which is no dialog "
+                                    "(use a scene name of this NPC or a DIA_... instance)")
+
         new_topics = generate_constants_file(ni or "NPC", blocks, tuple(known_topics))
         if new_topics:
             count = new_topics.count("const string")
             problems.append(f"{count} new log topic(s) will be written to "
                             f"Log_Entries/LOG_Constants_{sanitize(ni) or 'NPC'}.d")
+        return problems
 
+    def _validate(self):
+        problems = self._problems()
         if not problems:
             QMessageBox.information(self, "Validate",
                                     "Every identifier exists in Content/.\nThis should compile.")
@@ -417,6 +430,18 @@ class DialogPage(QWidget):
             QMessageBox.warning(self, "Missing Info",
                                 "Please set both NPC Name and NPC ID.")
             return
+
+        # Same rule as the NPC tab: problems are shown first and you decide. A new log
+        # topic is not a problem (Save writes it), so it does not stop the save.
+        problems = [p for p in self._problems() if "new log topic" not in p]
+        if problems:
+            answer = QMessageBox.question(
+                self, "Save anyway?",
+                "\n".join("- " + p for p in problems) + "\n\nThe mod build will fail on these. Save anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
 
         blocks = self._collect_blocks()
         # Gothic.src:295 globs DIA*.d - a file not starting with DIA is never compiled.
