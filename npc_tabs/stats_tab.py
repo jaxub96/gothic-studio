@@ -31,6 +31,11 @@ def build(parent: QWidget, npc, handlers) -> None:
     ui.section(layout, "Attributes")
 
     manual = []
+    level = ui.number(
+        1, 100, npc.level,
+        lambda v: handlers.assignAttribute("level", lambda: v, int))
+    ui.field_row(layout, "Level", level)
+    manual.append(level)
     for text, attr, lo, hi in ATTRIBUTES:
         widget = ui.number(
             lo, hi, getattr(npc, attr),

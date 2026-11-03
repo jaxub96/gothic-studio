@@ -6,8 +6,8 @@ and announces the instance name it built so the Dialog page can pick it up.
 """
 
 from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import (QFileDialog, QMessageBox, QTabWidget, QTextEdit,
-                             QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QFileDialog, QMessageBox, QTextEdit, QVBoxLayout,
+                             QWidget)
 
 import npc_gen
 import project
@@ -15,7 +15,8 @@ import ui
 from npc_handlers import NpcHandlers
 from npc_model import Npc
 from model_view import ModelView
-from npc_tabs import general_tab, inventory_tab, skills_tab, stats_tab, visual_tab
+from npc_tabs import (general_tab, inventory_tab, routine_tab, skills_tab,
+                      stats_tab, talents_tab, visual_tab)
 from theme import DaedalusHighlighter, mono_font
 
 
@@ -58,16 +59,18 @@ class NpcPage(QWidget):
         self.side.add_tab(self.preview, "Script")
         self.side.tabs.currentChanged.connect(self._preview_tab_changed)
 
-        self.tabs = QTabWidget()
+        self.tabs = ui.SideTabs()
         for title, module in [("General", general_tab), ("Stats", stats_tab),
-                              ("Skills", skills_tab), ("Visual", visual_tab),
-                              ("Inventory", inventory_tab)]:
+                              ("Skills", skills_tab), ("Talents", talents_tab),
+                              ("Visual", visual_tab),
+                              ("Inventory", inventory_tab),
+                              ("Routine", routine_tab)]:
             page = QWidget()
             page.setLayout(QVBoxLayout())
             self.tabs.addTab(page, title)
             module.build(page, self.npc, self.handlers)
 
-        root.addWidget(ui.page(self.tabs, self.side))
+        root.addWidget(ui.page(self.tabs, self.side, left=0))
 
     # ------------------------------------------------------------------ actions
     def refresh(self):

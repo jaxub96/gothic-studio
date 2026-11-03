@@ -14,6 +14,8 @@ No Qt in here.
 
 import re
 
+import talents
+
 
 def sanitize(text):
     return re.sub(r"[^A-Za-z0-9_]", "_", text or "")
@@ -92,6 +94,14 @@ def build_npc(npc):
     for entry in npc.inv_items:
         if entry.get("item"):
             a(f'\tCreateInvItems\t(self, {entry["item"]}, {entry.get("quantity", 1)});')
+    if npc.ambient_inv:
+        a("\tB_CreateAmbientInv\t(self);")
+    extra = talents.lines(npc.talents)
+    if extra:
+        a("")
+        a("\t// ---------------- talents ----------------")
+        for line in extra:
+            a(line)
     a("")
     a(f"\tdaily_routine\t= {rtn};")
     a("};")

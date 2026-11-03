@@ -45,13 +45,6 @@ class DialogPage(QWidget):
                                  lambda: self._save(ask=True),
                                  "Write into Content/Story/Dialoge")
 
-        self.dia_preview = QTextEdit()
-        self.dia_preview.setReadOnly(True)
-        self.dia_preview.setFont(mono_font())
-        self.dia_preview.setStyleSheet(ui.code_view_css())
-        DaedalusHighlighter(self.dia_preview.document())
-        self.side.add_tab(self.dia_preview, "Script")
-
         # The spoken lines on their own - the same thing Export text writes,
         # and what you want when you are reading the conversation rather than
         # the code.
@@ -60,11 +53,18 @@ class DialogPage(QWidget):
         self.text_preview.setStyleSheet(ui.code_view_css())
         self.side.add_tab(self.text_preview, "Spoken text")
 
+        self.dia_preview = QTextEdit()
+        self.dia_preview.setReadOnly(True)
+        self.dia_preview.setFont(mono_font())
+        self.dia_preview.setStyleSheet(ui.code_view_css())
+        DaedalusHighlighter(self.dia_preview.document())
+        self.side.add_tab(self.dia_preview, "Script")
+
         # The work area: header, then scenes beside the scene editor.
         work = QWidget()
         col = QVBoxLayout(work)
         col.setContentsMargins(0, 0, 0, 0)
-        col.setSpacing(ui.GAP)
+        col.setSpacing(0)
         col.addWidget(self._header())
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -78,9 +78,13 @@ class DialogPage(QWidget):
         splitter.addWidget(self.editor_stack)
         splitter.setSizes([THEME["sidebar_width"], 700])
         splitter.setStretchFactor(1, 1)
-        col.addWidget(splitter, 1)
+        body = QWidget()
+        body_col = QVBoxLayout(body)
+        body_col.setContentsMargins(ui.PADDING, ui.PADDING, 0, 0)
+        body_col.addWidget(splitter)
+        col.addWidget(body, 1)
 
-        root.addWidget(ui.page(work, self.side))
+        root.addWidget(ui.page(work, self.side, left=0))
 
         self.npc_name_edit.textChanged.connect(self._refresh_preview)
         self.npc_id_edit.currentTextChanged.connect(self._refresh_preview)
@@ -94,12 +98,14 @@ class DialogPage(QWidget):
     def _header(self):
         """Who this dialog belongs to, and the file actions.
 
-        Two quiet rows inside the work area rather than a full-width bar, so
-        the page has the same shape as the NPC page.
+        Two rows on a grey strip directly under the tab bar, so the selected
+        Dialog tab and the strip read as one surface.
         """
         holder = QWidget()
+        holder.setObjectName("dialogHeader")
+        holder.setStyleSheet(f"#dialogHeader {{ background:{THEME['bg_panel']}; }}")
         col = QVBoxLayout(holder)
-        col.setContentsMargins(0, 0, 0, 0)
+        col.setContentsMargins(ui.PADDING, ui.PADDING, ui.PADDING, ui.GAP)
         col.setSpacing(ui.GAP)
 
         who = ui.row()

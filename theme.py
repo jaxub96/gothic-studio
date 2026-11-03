@@ -8,42 +8,39 @@ import re
 from PyQt6.QtGui import QFont, QColor, QSyntaxHighlighter, QTextCharFormat
 
 THEME = {
-"bg_main":          "#f1e9d8",   # aged parchment
-"bg_panel":         "#e8ddc4",   # darker parchment
-"bg_bar":           "#ddcfa8",   # worn leather
-"bg_border":        "#b8a374",   # brass/leather line — was a flat gray, now has warmth
-"bg_input":         "#f1e9d8",   # same as main bg, but with border
-"bg_input_border":  "#b8a374",   # brass/leather line —
-"bg_choice":        "#372E29",
-"bg_choice_input":  "#302925",
-"bg_code":          "#e8ddc4",   # same as panel bg, but with border
-"text_primary":     "#2e2418",   # iron-gall ink
-"text_secondary":   "#5a4a35",
-"text_muted":        "#8c7a5c",
+"bg_main":          "#ffffff",
+"bg_panel":         "#f4f4f2",
+"bg_bar":           "#f4f4f2",
+"bg_border":        "#1a1a1a",
+"bg_input":         "#ffffff",
+"bg_input_border":  "#1a1a1a",
+"bg_hover":         "#e7e7e2",
+"bg_choice":        "#2b2b27",
+"bg_choice_input":  "#34342f",
+"bg_code":          "#f4f4f2",
+"text_primary":     "#1a1a1a",
+"text_secondary":   "#33332f",
+"text_muted":        "#6b6b66",
 
-"accent_primary":   "#8a3a2a",   # oxblood wax-seal red — replaces the teal
-"accent_hover":     "#6e2d20",
-"accent_secondary": "#4d5c3f",   # moss/forest green — replaces the sage
+"accent_primary":   "#e8431c",
+"accent_hover":     "#c93512",
+"accent_secondary": "#3f5f52",
 
 # Dialogue
-"bubble_npc_bg":    "#342F2B",
-"bubble_npc_text":  "#D2C5B1",
+"bubble_npc_bg":    "#f4f4f2",
+"bubble_npc_text":  "#1a1a1a",
 
-"bubble_hero_bg":   "#47332C",
-"bubble_hero_text": "#E2D2BF",
-
-    # Syntax highlighting (code preview only)
-    "syn_keyword":      "#8a7a68",
-    "syn_type":         "#7a7a9a",
-    "syn_function":     "#5f8a72",
-    "syn_string":       "#a68a5a",
-    "syn_comment":      "#b0a894",
-    "syn_number":       "#6a86a0",
-
- # ── Typography ────────────────────────────────────────────────────────────
-    "font_display":     "Cinzel, Trajan Pro, Georgia, serif",   # new key
+"bubble_hero_bg":   "#ffe9e2",
+"bubble_hero_text": "#1a1a1a",
+    "syn_keyword":      "#c13f1d",
+    "syn_type":         "#5a4fa0",
+    "syn_function":     "#2f6f58",
+    "syn_string":       "#a0701f",
+    "syn_comment":      "#9a9a8e",
+    "syn_number":       "#3b6aa0",
+    "font_display":     "Consolas, Cascadia Code, monospace",   # new key
     "font_ui":          "Segoe UI, Helvetica Neue, Arial, sans-serif",   # unchanged — body stays legible
-    "font_code":        "Cascadia Code, Consolas, monospace",
+    "font_code":        "Consolas, Cascadia Code, monospace",
     "font_size_ui":     "21px",
     "font_size_small":  "18px",
     "font_size_tiny":   "15px",
@@ -52,9 +49,9 @@ THEME = {
     "font_size_code":   13,          # pt, used for QFont object
 
     # ── Geometry ──────────────────────────────────────────────────────────────
-    "radius_sm":        "1px",
-    "radius_md":        "3px",
-    "radius_lg":        "5px",
+    "radius_sm":        "0px",
+    "radius_md":        "0px",
+    "radius_lg":        "0px",
     "border_width":     "1px",
     "topbar_height":    56,
     "sidebar_width":    212,
@@ -117,7 +114,7 @@ def _ss_check():
         f"QCheckBox {{ color:{t['text_secondary']}; spacing:6px; }}"
         f"QCheckBox::indicator {{ width:13px; height:13px; "
         f"  border:{t['border_width']} solid {t['bg_border']}; "
-        f"  border-radius:3px; background:{t['bg_input']}; }}"
+        f"  border-radius:0; background:{t['bg_input']}; }}"
         f"QCheckBox::indicator:checked {{ background:{t['accent_primary']}; "
         f"  border-color:{t['accent_primary']}; }}"
     )
@@ -131,8 +128,6 @@ def _ss_group():
         f"  background:{t['bg_panel']}; font-family:{t['font_ui']}; }}"
         f"QGroupBox::title {{ subcontrol-origin:margin; left:10px; "
         f"  background:{t['bg_panel']}; padding:0 4px; }}"
-        f"border: 2px double {THEME['bg_border']};"
-        
     )
 
 def _ss_add_btn():
@@ -163,10 +158,10 @@ def _ss_global():
         }}
         QLabel {{ color: {t['text_secondary']}; }}
         QScrollBar:vertical {{
-            background: {t['bg_panel']}; width: 8px; border-radius: 4px;
+            background: {t['bg_panel']}; width: 8px; border-radius: 0;
         }}
         QScrollBar::handle:vertical {{
-            background: {t['bg_border']}; border-radius: 4px;
+            background: {t['bg_border']}; border-radius: 0;
         }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
         QSplitter::handle {{ background: {t['bg_main']}; width: 10px; }}
@@ -176,21 +171,24 @@ def _ss_global():
             background: {t['bg_main']};
             top: -1px;
         }}
+        QTabBar {{ background: {t['bg_main']}; }}
         QTabBar::tab {{
-            background: transparent;
+            background: {t['bg_hover']};
             color: {t['text_muted']};
-            padding: 8px 16px;
+            padding: 8px 18px 8px 18px;
             border: none;
-            margin-right: 4px;
+            border-bottom: 1px solid {t['bg_border']};
+            border-right: {t['border_width']} solid {t['bg_border']};
             font-family: {t['font_ui']};
             font-size: {t['font_size_small']};
             font-weight: 600;
         }}
-        QTabBar::tab:hover {{ color: {t['text_secondary']}; }}
+        QTabBar::tab:hover {{ color: {t['text_primary']}; }}
         QTabBar::tab:selected {{
-            color: {t['accent_primary']};
+            background: {t['bg_panel']};
+            color: {t['text_primary']};
+            border-bottom: 1px solid {t['bg_panel']};
             font-weight: 700;
-            border-bottom: 2px solid {t['accent_primary']};
         }}
         QMessageBox {{ background: {t['bg_main']}; }}
     """
@@ -256,4 +254,4 @@ def mono_font():
     f.setStyleHint(QFont.StyleHint.Monospace)
     return f
 
-THEME.setdefault("accent_gold", "#a07820")
+THEME.setdefault("accent_gold", "#b9801f")

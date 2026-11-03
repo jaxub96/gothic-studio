@@ -1,6 +1,6 @@
 """General tab - identity, guild, type.
 
-ID and level are exact numbers, so they are number fields. Gender has two
+ID is an exact number, so it is a number field. Gender has two
 states, so both are on screen rather than hidden behind a dropdown.
 """
 
@@ -20,7 +20,7 @@ def build(parent: QWidget, npc, handlers) -> None:
 
     ui.section(layout, "Identity")
 
-    # Name, ID and level are one thought - who this is - so they share a row.
+    # Name and ID are one thought - who this is - so they share a row.
     # The ID is stored zero-padded because that is how the game writes instance
     # names: GRD_001_Arideus, not GRD_1_Arideus.
     ui.field_group(layout, [
@@ -30,10 +30,6 @@ def build(parent: QWidget, npc, handlers) -> None:
         ("ID", ui.number(
             0, 999, int(npc.id or 0),
             lambda v: handlers.assignAttribute("id", lambda: f"{v:03d}"),
-            width=88), 0),
-        ("Level", ui.number(
-            1, 100, npc.level,
-            lambda v: handlers.assignAttribute("level", lambda: v, int),
             width=88), 0),
     ])
 

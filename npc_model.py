@@ -58,3 +58,5 @@ class Npc:
 
         # --- Inventory ---  [{"item": str, "quantity": int}, ...]
         self.inv_items = []
+        self.talents = set()          # ids from talents.py
+        self.ambient_inv = 0          # emit B_CreateAmbientInv (self)

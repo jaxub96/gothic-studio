@@ -71,6 +71,15 @@ def build(parent: QWidget, npc, handlers) -> None:
     # ------------------------------------------------------------- inventory
     ui.section(layout, "Starting items")
 
+    layout.addWidget(ui.checkbox(
+        "Add ambient inventory", bool(npc.ambient_inv),
+        lambda v: handlers.assignAttribute("ambient_inv", lambda: int(v), int),
+        "Calls B_CreateAmbientInv: a random food/gold/trinket set chosen by guild"))
+    layout.addWidget(ui.hint(
+        "B_CreateAmbientInv (self) gives the NPC a random everyday set picked "
+        "by their guild: food, a little gold, the odd plant or potion."))
+    layout.addSpacing(ui.GAP)
+
     inventory = ui.listbox()
     search = ui.search_input(
         [f"{code} - {name}" for code, name in items.items()],

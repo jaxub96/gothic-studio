@@ -26,12 +26,12 @@ Buttons
   button(text, on_click, variant=...)  variants: primary, default, subtle, danger
 """
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QFrame,
                              QTabWidget,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget,
-                             QPushButton, QRadioButton, QSlider, QSpinBox,
+                             QPushButton, QRadioButton, QSlider, QSpinBox, QStackedWidget,
                              QTreeWidget, QVBoxLayout, QWidget)
 
 from theme import THEME
@@ -59,7 +59,7 @@ def heading(text):
     w = QLabel(text.upper())
     w.setStyleSheet(
         f"color:{THEME['text_muted']}; font-size:{FONT_HINT}; font-weight:700; "
-        f"letter-spacing:2px; background:transparent;")
+        f"letter-spacing:2px; background:transparent; font-family:{THEME['font_code']};")
     return w
 
 
@@ -181,7 +181,7 @@ def _input_css(widget_name):
         f"  color:{THEME['text_primary']}; "
         f"  border:{THEME['border_width']} solid {THEME['bg_input_border']}; "
         f"  border-radius:{THEME['radius_sm']}; padding:5px 8px; "
-        f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
+        f"  font-family:{THEME['font_code']}; font-size:{FONT_LABEL}; "
         f"  selection-background-color:{THEME['accent_primary']}; }}"
         f"{widget_name}:focus {{ border:{THEME['border_width']} solid "
         f"  {THEME['accent_primary']}; }}"
@@ -252,7 +252,7 @@ def _combo_css():
         f"QComboBox QAbstractScrollArea QScrollBar:vertical {{ "
         f"  background:{THEME['bg_panel']}; width:12px; border:none; }}"
         f"QComboBox QAbstractScrollArea QScrollBar::handle:vertical {{ "
-        f"  background:{THEME['bg_border']}; border-radius:6px; min-height:24px; }}")
+        f"  background:{THEME['bg_border']}; border-radius:0; min-height:24px; }}")
 
 
 def dropdown(items, value=None, on_change=None):
@@ -296,11 +296,11 @@ def slider(lo, hi, value, on_change, fmt=str, width=88):
     bar.setValue(value)
     bar.setStyleSheet(
         f"QSlider::groove:horizontal {{ background:{THEME['bg_input_border']}; "
-        f"  height:3px; border-radius:1px; }}"
+        f"  height:3px; border-radius:0; }}"
         f"QSlider::sub-page:horizontal {{ background:{THEME['accent_primary']}; "
-        f"  height:3px; border-radius:1px; }}"
+        f"  height:3px; border-radius:0; }}"
         f"QSlider::handle:horizontal {{ background:{THEME['accent_primary']}; "
-        f"  width:12px; height:12px; margin:-5px 0; border-radius:6px; }}"
+        f"  width:12px; height:12px; margin:-5px 0; border-radius:0; }}"
         f"QSlider::handle:horizontal:disabled {{ "
         f"  background:{THEME['bg_border']}; }}")
 
@@ -320,18 +320,18 @@ def spin(lo, hi, value, on_change, suffix="", width=110):
     return number(lo, hi, value, on_change, suffix, width)
 
 
-def checkbox(text, checked=False, on_change=None, tooltip=""):
+def checkbox(text, checked=False, on_change=None, tooltip="", compact=False):
     w = QCheckBox("  " + text)
     w.setChecked(checked)
     if tooltip:
         w.setToolTip(tooltip)
-    w.setMinimumHeight(BUTTON_H)
+    w.setMinimumHeight(COMPACT_H if compact else BUTTON_H)
     w.setStyleSheet(
         f"QCheckBox {{ color:{THEME['text_secondary']}; "
         f"  font-size:{FONT_LABEL}; spacing:4px; background:transparent; }}"
         f"QCheckBox::indicator {{ width:14px; height:14px; "
         f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
-        f"  border-radius:3px; background:{THEME['bg_input']}; }}"
+        f"  border-radius:0; background:{THEME['bg_input']}; }}"
         f"QCheckBox::indicator:checked {{ background:{THEME['accent_primary']}; "
         f"  border-color:{THEME['accent_primary']}; }}"
         f"QCheckBox:disabled {{ color:{THEME['text_muted']}; }}")
@@ -394,7 +394,7 @@ def _list_css(widget_name):
         f"QScrollBar:vertical {{ background:{THEME['bg_panel']}; width:8px; "
         f"  border:none; }}"
         f"QScrollBar::handle:vertical {{ background:{THEME['bg_border']}; "
-        f"  border-radius:4px; }}"
+        f"  border-radius:0; }}"
         f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ "
         f"  height:0; }}")
 
@@ -426,22 +426,25 @@ PRIMARY, DEFAULT, SUBTLE, DANGER = "primary", "default", "subtle", "danger"
 
 _VARIANTS = {
     PRIMARY: ("accent_primary", "bg_main", "accent_hover"),
-    DEFAULT: ("bg_panel", "text_secondary", "bg_input_border"),
-    SUBTLE: ("bg_main", "text_muted", "bg_bar"),
+    DEFAULT: ("bg_panel", "text_primary", "bg_hover"),
+    SUBTLE: ("bg_main", "text_muted", "bg_hover"),
     DANGER: ("accent_gold", "bg_main", "accent_hover"),
 }
 
 
 def _button_css(variant, height):
     bg, fg, hover = _VARIANTS.get(variant, _VARIANTS[DEFAULT])
+    solid = variant in (PRIMARY, DANGER)
+    edge = THEME[bg] if solid else THEME['bg_border']
     return (
         f"QPushButton {{ background:{THEME[bg]}; color:{THEME[fg]}; "
-        f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
+        f"  border:{THEME['border_width']} solid {edge}; "
         f"  border-radius:{THEME['radius_sm']}; padding:0 12px; "
         f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
         f"  font-weight:600; min-height:{height}px; }}"
         f"QPushButton:hover {{ background:{THEME[hover]}; "
-        f"  color:{THEME['text_primary']}; }}"
+        f"  border-color:{THEME[hover] if solid else THEME['bg_border']}; "
+        f"  color:{THEME[fg] if solid else THEME['text_primary']}; }}"
         f"QPushButton:disabled {{ color:{THEME['text_muted']}; "
         f"  background:{THEME['bg_panel']}; }}")
 
@@ -470,7 +473,7 @@ def _small_button_css(color_key, height=COMPACT_H):
         f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
         f"  border-radius:{THEME['radius_sm']}; padding:0 10px; "
         f"  font-size:{FONT_LABEL}; font-weight:600; min-height:{height}px; }}"
-        f"QPushButton:hover {{ background:{THEME['bg_input_border']}; "
+        f"QPushButton:hover {{ background:{THEME['bg_hover']}; "
         f"  color:{THEME['text_primary']}; }}")
 
 
@@ -489,7 +492,7 @@ SS = {
         f"  spacing:4px; background:transparent; }}"
         f"QCheckBox::indicator {{ width:14px; height:14px; "
         f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
-        f"  border-radius:3px; background:{THEME['bg_input']}; }}"
+        f"  border-radius:0; background:{THEME['bg_input']}; }}"
         f"QCheckBox::indicator:checked {{ background:{THEME['accent_primary']}; "
         f"  border-color:{THEME['accent_primary']}; }}"),
     "add_btn": _small_button_css("accent_primary"),
@@ -525,6 +528,68 @@ def image_frame(height, text=""):
 
 # --- the shared page frame ----------------------------------------------------
 
+class SideTabs(QWidget):
+    """Tabs down the left edge: a hard-ruled list beside a stack of pages.
+
+    Offers the few QTabWidget methods the pages use.
+    """
+
+    currentChanged = pyqtSignal(int)
+    LIST_WIDTH = 168
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        self._list = QListWidget()
+        self._list.setFixedWidth(self.LIST_WIDTH)
+        self._list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._list.setStyleSheet(
+            f"QListWidget {{ background:{THEME['bg_panel']}; border:none; "
+            f"  border-right:{THEME['border_width']} solid {THEME['bg_border']}; "
+            f"  outline:none; padding:10px 8px; "
+            f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
+            f"  font-weight:600; }}"
+            f"QListWidget::item {{ padding:8px 10px; margin-bottom:2px; "
+            f"  color:{THEME['text_muted']}; }}"
+            f"QListWidget::item:hover {{ color:{THEME['text_primary']}; "
+            f"  background:transparent; }}"
+            f"QListWidget::item:selected {{ background:{THEME['text_primary']}; "
+            f"  color:{THEME['bg_main']}; }}")
+        self._stack = QStackedWidget()
+        lay.addWidget(self._list)
+        lay.addWidget(self._stack, 1)
+        self._list.currentRowChanged.connect(self._on_row)
+
+    def _on_row(self, index):
+        if index >= 0:
+            self._stack.setCurrentIndex(index)
+            self.currentChanged.emit(index)
+
+    def addTab(self, widget, title):
+        self._list.addItem(title)
+        self._stack.addWidget(widget)
+        if self._list.currentRow() < 0:
+            self._list.setCurrentRow(0)
+
+    def count(self):
+        return self._stack.count()
+
+    def widget(self, index):
+        return self._stack.widget(index)
+
+    def tabText(self, index):
+        return self._list.item(index).text()
+
+    def currentIndex(self):
+        return self._stack.currentIndex()
+
+    def setCurrentIndex(self, index):
+        self._list.setCurrentRow(index)
+
+
 class SidePanel(QWidget):
     """The right-hand side of a page: preview tabs, a status line, actions.
 
@@ -541,6 +606,11 @@ class SidePanel(QWidget):
 
         self.tabs = QTabWidget()
         col.addWidget(self.tabs, 1)
+
+        rule = QFrame()
+        rule.setFixedHeight(1)
+        rule.setStyleSheet(f"background:{THEME['bg_border']}; border:none;")
+        col.addWidget(rule)
 
         self.status = hint("")
         col.addWidget(self.status)
@@ -565,11 +635,11 @@ class SidePanel(QWidget):
         self.status.setText(text)
 
 
-def page(work_area, side_panel, work_stretch=3, side_stretch=2):
+def page(work_area, side_panel, work_stretch=3, side_stretch=2, left=PADDING):
     """A whole page: what you edit on the left, what you get on the right."""
     holder = QWidget()
     lay = QHBoxLayout(holder)
-    lay.setContentsMargins(PADDING, PADDING, PADDING, PADDING)
+    lay.setContentsMargins(left, 0, PADDING, PADDING)
     lay.setSpacing(PADDING)
     lay.addWidget(work_area, work_stretch)
     lay.addWidget(side_panel, side_stretch)
