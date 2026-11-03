@@ -225,32 +225,68 @@ def info_instances():
     return _scan("**/*.d", r"^\s*instance\s+(\w+)\s*\(\s*C_INFO\s*\)")
 
 
+def _world_files():
+    """Every .zen under Data/Worlds. The folder is WORLDS on this install and
+    Worlds elsewhere, so find it by name ignoring case (Linux cares)."""
+    from project import SCRIPTS
+    data = SCRIPTS.parent
+    try:
+        base = next((d for d in data.iterdir()
+                     if d.is_dir() and d.name.lower() == "worlds"), None)
+    except OSError:
+        return []
+    return sorted(iglob(base, "**/*.zen")) if base else []
+
+
+# ASCII archives spell it out; binary (BIN_SAFE) ones, which is what the stock
+# worlds are, store a type byte, a 16-bit length, then the name.
+_WP_ASCII = re.compile(rb"wpName=string:([^\r\n]+)")
+_WP_BINARY = re.compile(rb"zCWaypoint 0 \d+\]\x12.\[\x00\x00\x01", re.S)
+
+
+def _zen_waypoints(path):
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return set()
+    names = {m.group(1).decode(ENCODING, "ignore").strip()
+             for m in _WP_ASCII.finditer(data)}
+    for m in _WP_BINARY.finditer(data):
+        n = int.from_bytes(data[m.end():m.end() + 2], "little")
+        raw = data[m.end() + 2:m.end() + 2 + n]
+        if 0 < n < 128:
+            names.add(raw.decode(ENCODING, "ignore").strip())
+    return names
+
+
 @lru_cache
 def waypoints():
-    """Waypoint names from .check/worldnames.json, if the waypoint check made one."""
+    """Waypoint names from every world in Data/Worlds, plus any listed in
+    .check/worldnames.json if a waypoint check left one there."""
     import json
     from project import CHECK_DIR
-    f = CHECK_DIR / "worldnames.json"
-    if not f.exists():
-        return []
-    try:
-        data = json.loads(f.read_text(encoding="utf-8", errors="ignore"))
-    except (OSError, ValueError):
-        return []
     names = set()
+    for f in _world_files():
+        names |= _zen_waypoints(f)
 
-    def walk(node):
-        if isinstance(node, str):
-            names.add(node)
-        elif isinstance(node, list):
-            for x in node:
-                walk(x)
-        elif isinstance(node, dict):
-            for x in node.values():
-                walk(x)
+    f = CHECK_DIR / "worldnames.json"
+    if f.exists():
+        try:
+            data = json.loads(f.read_text(encoding="utf-8", errors="ignore"))
+        except (OSError, ValueError):
+            data = []
 
-    walk(data)
-    return sorted(n for n in names if n.upper().startswith("WP"))
+        def walk(node):
+            if isinstance(node, str):
+                names.add(node)
+            elif isinstance(node, list):
+                for x in node:
+                    walk(x)
+            elif isinstance(node, dict):
+                for x in node.values():
+                    walk(x)
+        walk(data)
+    return sorted((n for n in names if re.fullmatch(r"\w+", n)), key=str.lower)
 
 
 # --- Validation -------------------------------------------------------------

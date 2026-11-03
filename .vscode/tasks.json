@@ -2,19 +2,50 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Run Gothic Studio (dev)",
+            "label": "Run Gothic Studio",
             "type": "shell",
-            "command": "${workspaceFolder}\\dev.bat",
-            "group": { "kind": "build", "isDefault": true },
-            "presentation": { "reveal": "silent", "panel": "dedicated", "clear": true },
+            "command": "${workspaceFolder}/run.sh",
+            "windows": {
+                "command": "${workspaceFolder}\\run.bat"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "silent",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Gothic Studio (dev fixture)",
+            "type": "shell",
+            "command": "${workspaceFolder}/run.sh --dev",
+            "windows": {
+                "command": "${workspaceFolder}\\dev.bat"
+            },
+            "presentation": {
+                "reveal": "silent",
+                "panel": "dedicated",
+                "clear": true
+            },
             "problemMatcher": []
         },
         {
             "label": "Selftest",
             "type": "shell",
-            "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe selftest.py",
+            "command": "if [ -x .venv/bin/python ]; then .venv/bin/python selftest.py; else python3 selftest.py; fi",
+            "windows": {
+                "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe selftest.py"
+            },
             "group": "test",
-            "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
             "problemMatcher": []
         }
     ]
