@@ -1,0 +1,4 @@
+PyQt6>=6.6
+# Optional: ~9x faster texture decoding and faster large 3D frames.
+# The app works without it, just slower. See benchmark.py.
+numpy>=1.24

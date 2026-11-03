@@ -1,0 +1,539 @@
+"""
+dialog_page.py - the Dialog half of the studio, as a plain QWidget.
+
+Was Daedalogue/daedalogue.py. The scene tree, chat editor and code generator
+are unchanged; what is new is that it saves into Content/Story/Dialoge as
+CP1250, writes the log-topic constants file that the old tool generated but
+never emitted, and can take its NPC id straight from the NPC page.
+"""
+
+import os
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (QComboBox, QFileDialog, QFrame, QHBoxLayout,
+                             QLabel, QLineEdit, QMessageBox, QPushButton,
+                             QScrollArea, QSplitter, QStackedWidget, QTextEdit,
+                             QVBoxLayout, QWidget)
+
+import gamedata
+import project
+import ui
+from dialog_gen import (DialogBlock, export_block_name, export_followup_name,
+                        generate_constants_file, generate_dia_file,
+                        export_plain_dialog, parse_dia_file, parse_plain_dialog,
+                        sanitize)
+from dialog_widgets import BlockEditor, BlockListItem
+from theme import SS, THEME, DaedalusHighlighter, mono_font
+
+
+class DialogPage(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.blocks = []
+        self.block_editors = []
+        self.block_items = []
+        self.current_block_idx = -1
+        self.current_file_path = None
+        self._npc_id_touched = False
+        self._npc_name_touched = False
+        self._build()
+
+    # ------------------------------------------------------------------ layout
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+
+        # Built first: the header wires signals that call _refresh_preview.
+        self.side = ui.SidePanel(self._validate, self._save,
+                                 lambda: self._save(ask=True),
+                                 "Write into Content/Story/Dialoge")
+
+        self.dia_preview = QTextEdit()
+        self.dia_preview.setReadOnly(True)
+        self.dia_preview.setFont(mono_font())
+        self.dia_preview.setStyleSheet(ui.code_view_css())
+        DaedalusHighlighter(self.dia_preview.document())
+        self.side.add_tab(self.dia_preview, "Script")
+
+        # The spoken lines on their own - the same thing Export text writes,
+        # and what you want when you are reading the conversation rather than
+        # the code.
+        self.text_preview = QTextEdit()
+        self.text_preview.setReadOnly(True)
+        self.text_preview.setStyleSheet(ui.code_view_css())
+        self.side.add_tab(self.text_preview, "Spoken text")
+
+        # The work area: header, then scenes beside the scene editor.
+        work = QWidget()
+        col = QVBoxLayout(work)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(ui.GAP)
+        col.addWidget(self._header())
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setHandleWidth(ui.GAP)
+        splitter.addWidget(self._sidebar())
+
+        self.editor_stack = QStackedWidget()
+        self.placeholder = ui.placeholder("Select or create a dialog scene")
+        self.editor_stack.addWidget(self.placeholder)
+        self.editor_stack.setCurrentWidget(self.placeholder)
+        splitter.addWidget(self.editor_stack)
+        splitter.setSizes([THEME["sidebar_width"], 700])
+        splitter.setStretchFactor(1, 1)
+        col.addWidget(splitter, 1)
+
+        root.addWidget(ui.page(work, self.side))
+
+        self.npc_name_edit.textChanged.connect(self._refresh_preview)
+        self.npc_id_edit.currentTextChanged.connect(self._refresh_preview)
+        # activated / textEdited only fire for real user input, never for
+        # setCurrentText() - which is how we tell "you chose this" apart from
+        # "the NPC tab pushed this".
+        self.npc_id_edit.activated.connect(self._mark_npc_id_touched)
+        self.npc_id_edit.lineEdit().textEdited.connect(self._mark_npc_id_touched)
+        self.npc_name_edit.textEdited.connect(self._mark_npc_name_touched)
+
+    def _header(self):
+        """Who this dialog belongs to, and the file actions.
+
+        Two quiet rows inside the work area rather than a full-width bar, so
+        the page has the same shape as the NPC page.
+        """
+        holder = QWidget()
+        col = QVBoxLayout(holder)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(ui.GAP)
+
+        who = ui.row()
+        self.npc_name_edit = ui.text_input(placeholder="Arideus")
+        self.npc_name_edit.setFixedWidth(170)
+        self.npc_id_edit = ui.dropdown([])
+        self.npc_id_edit.setEditable(True)
+        self.npc_id_edit.setMinimumWidth(260)
+        self._reload_npc_ids()
+
+        who.addWidget(ui.label("Speaker"))
+        who.addWidget(self.npc_name_edit)
+        who.addSpacing(ui.GAP)
+        who.addWidget(ui.label("Instance"))
+        who.addWidget(self.npc_id_edit, 1)
+        who.addWidget(ui.button("Reload", self._reload_npc_ids, ui.DEFAULT,
+                                "Re-scan Content/Story/NPC", compact=True))
+        col.addLayout(who)
+
+        files = ui.row()
+        for text, slot, tip in [
+                ("New", self._new_project, "Clear and start a new dialog"),
+                ("Open", self._open, "Load a .d dialog file"),
+                ("Import text", self._import_text, "Read a plain Speaker - line file"),
+                ("Export text", self._export_text, "Write the spoken lines out as text")]:
+            files.addWidget(ui.button(text, slot, ui.DEFAULT, tip, compact=True))
+        files.addStretch()
+        col.addLayout(files)
+        return holder
+
+    def _sidebar(self):
+        """The list of conversation topics."""
+        left = QWidget()
+        left.setMaximumWidth(THEME["sidebar_width"])
+        col = QVBoxLayout(left)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(ui.GAP)
+
+        col.addWidget(ui.heading("Scenes"))
+        col.addWidget(ui.divider())
+
+        self.block_list_widget = QWidget()
+        self.block_list_layout = QVBoxLayout(self.block_list_widget)
+        self.block_list_layout.setContentsMargins(0, 0, 0, 0)
+        self.block_list_layout.setSpacing(3)
+        self.block_list_layout.addStretch()
+
+        scroll = QScrollArea()
+        scroll.setWidget(self.block_list_widget)
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border:none; background:transparent; }")
+        col.addWidget(scroll, 1)
+
+        col.addWidget(ui.button("+  New scene", lambda: self._add_block(),
+                                ui.PRIMARY, "Add another conversation topic"))
+        return left
+
+    def set_npc_id(self, instance_name):
+        """Called whenever the NPC page rebuilds its instance name.
+
+        Keeps following the NPC tab until you pick or type an ID yourself -
+        after that this stops touching the field.
+        """
+        if instance_name and not self._npc_id_touched:
+            self.npc_id_edit.setCurrentText(instance_name)
+
+    def _mark_npc_id_touched(self, *_):
+        self._npc_id_touched = True
+
+    def set_npc_name(self, name):
+        """Mirror the NPC tab's display name until you type your own."""
+        if name and not self._npc_name_touched:
+            self.npc_name_edit.setText(name)
+
+    def _mark_npc_name_touched(self, *_):
+        self._npc_name_touched = True
+
+    def on_npc_saved(self, _path):
+        """The NPC tab just wrote a file - refresh the dropdown so it is there."""
+        self._reload_npc_ids()
+
+    def _reload_npc_ids(self):
+        gamedata.npc_instances.cache_clear()
+        current = self.npc_id_edit.currentText() if hasattr(self, "npc_id_edit") else ""
+        self.npc_id_edit.clear()
+        self.npc_id_edit.addItems(sorted(gamedata.npc_instances()))
+        self.npc_id_edit.setCurrentText(current)
+
+    # ------------------------------------------------------- scene tree wiring
+    def _make_editor(self, is_followup):
+        return BlockEditor(
+            on_change=self._refresh_preview,
+            on_choice_added=self._on_choice_added,
+            on_choice_removed=self._on_choice_removed,
+            is_followup=is_followup,
+        )
+
+    def _is_descendant(self, block, ancestor):
+        cur = block.parent_block
+        while cur is not None:
+            if cur is ancestor:
+                return True
+            cur = cur.parent_block
+        return False
+
+    def _find_insert_pos_after(self, parent_idx):
+        parent_block = self.blocks[parent_idx]
+        pos = parent_idx + 1
+        while pos < len(self.blocks) and self._is_descendant(self.blocks[pos], parent_block):
+            pos += 1
+        return pos
+
+    def _add_block(self, block=None, parent_idx=None):
+        b = block if block is not None else DialogBlock()
+        pos = self._find_insert_pos_after(parent_idx) if parent_idx is not None else len(self.blocks)
+
+        self.blocks.insert(pos, b)
+        ed = self._make_editor(is_followup=b.is_followup)
+        if block is not None:
+            ed.load_block(b)
+        self.block_editors.insert(pos, ed)
+        self.editor_stack.addWidget(ed)
+
+        item = BlockListItem(pos, b.name, on_select=self._select_block,
+                             on_remove=self._remove_block, is_followup=b.is_followup)
+        self.block_items.insert(pos, item)
+        self.block_list_layout.insertWidget(pos, item)
+        self._reindex()
+        self._select_block(pos)
+        return b, ed
+
+    def _reindex(self):
+        for i, it in enumerate(self.block_items):
+            it.idx = i
+
+    def _select_block(self, idx):
+        if idx < 0 or idx >= len(self.blocks):
+            return
+        if 0 <= self.current_block_idx < len(self.block_items):
+            self.block_items[self.current_block_idx].set_active(False)
+        self.current_block_idx = idx
+        self.block_items[idx].set_active(True)
+        self.editor_stack.setCurrentWidget(self.block_editors[idx])
+        self._refresh_preview()
+
+    def _remove_block(self, idx):
+        if idx < 0 or idx >= len(self.blocks):
+            return
+        target = self.blocks[idx]
+        doomed = [i for i, b in enumerate(self.blocks)
+                  if b is target or self._is_descendant(b, target)]
+        for i in sorted(doomed, reverse=True):
+            self.blocks.pop(i)
+            self.block_editors.pop(i).deleteLater()
+            item = self.block_items.pop(i)
+            item.setParent(None)
+            item.deleteLater()
+        self._reindex()
+        self.current_block_idx = min(self.current_block_idx, len(self.blocks) - 1)
+        if self.current_block_idx >= 0:
+            self._select_block(self.current_block_idx)
+        else:
+            self.editor_stack.setCurrentWidget(self.placeholder)
+        self._refresh_preview()
+
+    def _editor_idx_containing(self, choice_widget):
+        for i, ed in enumerate(self.block_editors):
+            if choice_widget in ed.get_choice_widgets():
+                return i
+        return None
+
+    def _on_choice_added(self, cw):
+        parent_idx = self._editor_idx_containing(cw)
+        if parent_idx is None:
+            return
+        parent_block = self.blocks[parent_idx]
+        ni = self._npc_id()
+        parent_name = (self.block_editors[parent_idx].name_edit.text().strip()
+                       or parent_block.name or f"Scene{parent_idx + 1}")
+        if parent_block.is_followup and parent_block.func_name:
+            parent_bn = parent_block.func_name
+        else:
+            parent_bn = export_block_name(ni, parent_name)
+
+        n = len([b for b in self.blocks if b.parent_block is parent_block]) + 1
+        nb = DialogBlock()
+        nb.is_followup = True
+        nb.name = f"Choice {n}"
+        nb.func_name = f"{parent_bn}_Choice{n}"
+        nb.parent_block = parent_block
+
+        cw.linked_block = nb
+        cw.lock_func(nb.func_name)
+        self._add_block(nb, parent_idx=parent_idx)
+
+    def _on_choice_removed(self, cw):
+        if getattr(cw, "linked_block", None) is None:
+            return
+        for i, b in enumerate(self.blocks):
+            if b is cw.linked_block:
+                self._remove_block(i)
+                break
+
+    # ------------------------------------------------------------- generation
+    def _npc_name(self):
+        return self.npc_name_edit.text().strip()
+
+    def _npc_id(self):
+        return self.npc_id_edit.currentText().strip()
+
+    def _collect_blocks(self):
+        for i, ed in enumerate(self.block_editors):
+            b = self.blocks[i]
+            fresh = ed.get_block()
+            b.name = fresh.name or (f"Choice{i + 1}" if b.is_followup else f"Scene{i + 1}")
+            b.description = fresh.description
+            b.permanent = fresh.permanent
+            b.important = fresh.important
+            b.is_trade = fresh.is_trade
+            b.condition_expr = fresh.condition_expr
+            b.stop_after = fresh.stop_after
+            b.entries = fresh.entries
+            b.choices = fresh.choices
+            self.block_items[i].update_name(b.name)
+
+        n = 1
+        for b in self.blocks:
+            if not b.is_followup:
+                b.nr = n
+                n += 1
+
+        ni = self._npc_id() or "NPC_ID"
+        for b in self.blocks:
+            if b.is_followup:
+                parent_bn = (b.parent_block.func_name if b.parent_block.is_followup
+                             else export_block_name(ni, b.parent_block.name))
+                b.func_name = export_followup_name(parent_bn, b.name)
+        for ed in self.block_editors:
+            for cw in ed.get_choice_widgets():
+                if cw.linked_block is not None:
+                    cw.func.setText(cw.linked_block.func_name)
+        return self.blocks
+
+    def _emit_exit(self):
+        """Only emit the EXIT block if this NPC does not already have one.
+
+        Two dialog files for the same NPC that both emit DIA_<NPC>_EXIT are a
+        redefinition error and stop the whole mod compiling.
+        """
+        ni = self._npc_id()
+        if not ni:
+            return True
+        exit_name = f"DIA_{sanitize(ni)}_EXIT".upper()
+        for f in project.iglob(project.DIA_DIR, "DIA*.d"):
+            if f == self.current_file_path:
+                continue
+            if exit_name in project.read_script(f).upper():
+                return False
+        return True
+
+    def _dia_text(self):
+        blocks = self._collect_blocks()
+        return generate_dia_file(self._npc_name() or "NPC",
+                                 self._npc_id() or "NPC_ID",
+                                 blocks, emit_exit=self._emit_exit())
+
+    def _refresh_preview(self, *_):
+        self.dia_preview.setPlainText(self._dia_text())
+        self.text_preview.setPlainText(export_plain_dialog(self.blocks))
+
+    def _validate(self):
+        problems = []
+        ni = self._npc_id()
+        if not ni:
+            problems.append("No NPC ID set.")
+        elif gamedata.unknown("npc", ni):
+            problems.append(f"No NPC instance named '{ni}' exists in Content/Story/NPC.")
+
+        blocks = self._collect_blocks()
+        known_topics = {t.upper() for t in gamedata.log_topics()}
+        for b in blocks:
+            for e in b.entries:
+                kind = getattr(e, "kind", None)
+                if kind in ("give_item", "take_item") and gamedata.unknown("item", e.item):
+                    problems.append(f"Unknown item: {e.item}")
+                if kind == "give_xp" and e.xp and not str(e.xp).strip().isdigit():
+                    if gamedata.unknown("xp", e.xp):
+                        problems.append(f"Unknown XP constant: {e.xp}")
+                if kind == "routine" and e.routine and e.routine.upper() != "START":
+                    pass  # routine names are per-NPC strings, not global symbols
+
+        new_topics = generate_constants_file(ni or "NPC", blocks, tuple(known_topics))
+        if new_topics:
+            count = new_topics.count("const string")
+            problems.append(f"{count} new log topic(s) will be written to "
+                            f"Log_Entries/LOG_Constants_{sanitize(ni) or 'NPC'}.d")
+
+        if not problems:
+            QMessageBox.information(self, "Validate",
+                                    "Every identifier exists in Content/.\nThis should compile.")
+        else:
+            QMessageBox.warning(self, "Validate", "\n".join("- " + p for p in problems))
+        return problems
+
+    # ------------------------------------------------------------- persistence
+    def _save(self, ask=False):
+        nn, ni = self._npc_name(), self._npc_id()
+        if not nn or not ni:
+            QMessageBox.warning(self, "Missing Info",
+                                "Please set both NPC Name and NPC ID.")
+            return
+
+        blocks = self._collect_blocks()
+        # Gothic.src:295 globs DIA*.d - a file not starting with DIA is never compiled.
+        target = project.DIA_DIR / f"DIA_{sanitize(ni)}.d"
+        if ask:
+            chosen, _ = QFileDialog.getSaveFileName(
+                self, "Save Dialog File", str(target), "Daedalus (*.d)")
+            if not chosen:
+                return
+            target = chosen
+
+        path = project.write_script(target, self._dia_text())
+        self.current_file_path = path
+
+        # The log-topic constants. The old tool generated these and then never
+        # wrote them, so any dialog with a log entry could not compile.
+        consts = generate_constants_file(ni, blocks, tuple(gamedata.log_topics()))
+        msg = f"Saved as CP1250:\n  {path}"
+        if consts:
+            cpath = project.write_script(
+                project.LOG_DIR / f"LOG_Constants_{sanitize(ni)}.d", consts)
+            gamedata.log_topics.cache_clear()
+            msg += f"\n\nNew log topics:\n  {cpath}"
+
+        # Non-modal: the status line carries it, same as the NPC tab.
+        self.side.say(msg.replace(chr(10), "   "))
+
+    def _export_text(self):
+        blocks = self._collect_blocks()
+        if not any(b.lines() for b in blocks):
+            QMessageBox.information(self, "Nothing to Export", "Add some dialog lines first.")
+            return
+        default = f"{sanitize(self._npc_id()) or 'NPC'}_dialog.txt"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Plain Dialog Text", default, "Text Files (*.txt)")
+        if not path:
+            return
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(export_plain_dialog(blocks))
+        QMessageBox.information(self, "Exported", f"Dialog reference text saved:\n  {path}")
+
+    def _import_text(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Plain Dialog Text", "", "Text Files (*.txt)")
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                blocks = parse_plain_dialog(f.read())
+        except OSError as e:
+            QMessageBox.critical(self, "Could Not Import", f"{e}")
+            return
+        if not blocks:
+            QMessageBox.information(
+                self, "Nothing Found",
+                "No dialog lines found.\nExpected:\n\n-- Scene Name --\nNPC - line\nHero - line")
+            return
+        for b in blocks:
+            self._add_block(b)
+        self.side.say(f"Imported {len(blocks)} scene(s) from {os.path.basename(path)}")
+
+    def _open(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open Dialog File", str(project.DIA_DIR), "Daedalus (*.d)")
+        if not path:
+            return
+        try:
+            npc_name, npc_id, blocks = parse_dia_file(project.read_script(path))
+        except OSError as e:
+            QMessageBox.critical(self, "Could Not Open", f"{e}")
+            return
+        self._load_project(npc_name, npc_id, blocks)
+        self.current_file_path = path
+        self.side.say(f"Opened: {path}")
+
+    def _new_project(self):
+        if self.blocks or self._npc_name() or self._npc_id():
+            confirm = QMessageBox.question(
+                self, "Start New Dialog",
+                "This clears the NPC name/ID and every scene.\nContinue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+        self._load_project("", "", [])
+        self.current_file_path = None
+        self.side.say("")
+
+    def _load_project(self, npc_name, npc_id, blocks):
+        for ed in self.block_editors:
+            self.editor_stack.removeWidget(ed)
+            ed.deleteLater()
+        for item in self.block_items:
+            item.setParent(None)
+            item.deleteLater()
+        self.blocks, self.block_editors, self.block_items = [], [], []
+        self.current_block_idx = -1
+
+        self.npc_name_edit.setText(npc_name)
+        self.npc_id_edit.setCurrentText(npc_id)
+        # An opened file's NPC wins over the NPC tab; a new project follows it again.
+        self._npc_id_touched = bool(npc_id)
+        self._npc_name_touched = bool(npc_name)
+
+        if not blocks:
+            self.editor_stack.setCurrentWidget(self.placeholder)
+        for b in blocks:
+            _, ed = self._add_block(b)
+            if not b.is_followup:
+                for cw in ed.get_choice_widgets():
+                    child = next((c for c in blocks
+                                  if c.is_followup and c.func_name == cw.func.text()
+                                  and c.parent_block is b), None)
+                    if child is not None:
+                        cw.linked_block = child
+                        cw.lock_func(child.func_name)
+        if blocks:
+            self._select_block(0)
+        self._refresh_preview()
+
+
+def build():
+    return DialogPage()
