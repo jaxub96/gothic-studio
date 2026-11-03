@@ -138,10 +138,45 @@ def body_texture_values():
     return _const_values("BodyTex_")
 
 
+UNNAMED_FACE = "Face_Unnamed_"
+
+
 @lru_cache
 def face_values():
-    """Face_N_Gomez -> 0. The number is what picks HUM_HEAD_V<n>_C0."""
-    return _const_values("Face_")
+    """Face_N_Gomez -> 0. The number is what picks HUM_HEAD_V<n>_C0.
+
+    The game ships head textures that no script gives a name. They are listed
+    too, as Face_Unnamed_<n>, so they can be picked; see `face_code`.
+    """
+    import re as _re
+    import textures
+
+    out = dict(_const_values("Face_"))
+    named = set(out.values())
+    for key in textures._index():
+        m = _re.fullmatch(r"HUM_HEAD_V(\d+)_C0", key)
+        if m and int(m.group(1)) not in named:
+            out[f"{UNNAMED_FACE}{m.group(1)}"] = int(m.group(1))
+    return out
+
+
+def face_code(face):
+    """What to write in a script for this face. An unnamed face has no
+    constant to refer to, so it is written as its number."""
+    if str(face).lower().startswith(UNNAMED_FACE.lower()):
+        return str(face)[len(UNNAMED_FACE):]
+    return face
+
+
+def face_from_code(code):
+    """The reverse: a bare number read from a script -> its Face_Unnamed_<n>
+    name, if no real constant has that value. Anything else is returned as is."""
+    code = str(code).strip()
+    if code.isdigit():
+        for name, value in face_values().items():
+            if value == int(code) and name.startswith(UNNAMED_FACE):
+                return name
+    return code
 
 
 @lru_cache

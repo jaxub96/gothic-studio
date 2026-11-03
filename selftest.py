@@ -253,6 +253,18 @@ def main():
     check(win.dialog.npc_name_edit.text() == "Linked",
           "NPC tab feeds its display name to the Dialog tab")
 
+    # A face texture no script names is written as its number and read back.
+    unnamed = next((f for f in gamedata.faces() if f.startswith(gamedata.UNNAMED_FACE)), None)
+    if unnamed:
+        saved_face, npc.face = npc.face, unnamed
+        text = npc_gen.build_npc(npc)
+        number = gamedata.face_code(unnamed)
+        check(f", {number}, " in text and unnamed not in text,
+              f"an unnamed face is emitted as its number ({unnamed} -> {number})")
+        check(npc_gen.parse_npc(text).face == unnamed,
+              "an unnamed face is read back from the number")
+        npc.face = saved_face
+
     # ---------------------------------------------------------- routines
     print("\nday/night routine:")
     npc.split_routine = False

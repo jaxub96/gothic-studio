@@ -261,5 +261,8 @@ guessed.
   and simple vanilla ones; it is not a general Daedalus parser.
 - `B_SetAttributesToChapter` (Stats tab) overwrites `level`. That is the
   engine's behaviour, not a bug here - the checkbox says so.
-- Waypoints come from `.check/worldnames.json`. If that file is missing the
+- Waypoints are read from the `.zen` files in `Data/Worlds` (next to `Scripts`),
+  plus `.check/worldnames.json` if one exists. With no worlds folder the
   waypoint field is a free-text box instead of a searchable list.
+- Head textures that no script names (V137-V158 here) are listed as
+  `Face_Unnamed_<n>` and written to the `.d` file as the bare number.

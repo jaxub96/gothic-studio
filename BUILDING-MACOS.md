@@ -210,9 +210,9 @@ Gothic II/
     ├── Textures/_compiled/                your textures, override the archives
     ├── Meshes/_compiled/                  your item meshes
     ├── Anims/_compiled/, Anims/mds_overlay/
+    ├── Worlds/                            .zen files: waypoint names
     └── Scripts/                           <- point the app here
-        ├── Content/                       items, guilds, routines, NPCs
-        └── .check/                        waypoint names, if generated
+        └── Content/                       items, guilds, routines, NPCs
 ```
 
 `Speech*.vdf` and `Sounds*.vdf` are 1.4 GB that Gothic Studio never opens —
@@ -221,7 +221,7 @@ loose files win; the app reads both spellings, so copy them as they are.
 
 Any of it may be missing. Without the textures, meshes and archives you still
 get every picker and every generated `.d` file — the previews just go blank and
-the 3D view stays empty. Without `.check/worldnames.json` the waypoint list is
+the 3D view stays empty. Without `Data/Worlds` the waypoint list is
 empty and you type names by hand. `--check` names whichever part it could not
 find.
 
