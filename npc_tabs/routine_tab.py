@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QWidget
 
 import gamedata
 import labels
+import startup_gen
 import ui
 
 
@@ -65,4 +66,35 @@ def build(parent: QWidget, npc, handlers) -> None:
     ui.field(layout, "Waypoint", night_waypoint)
 
     on_split(bool(npc.split_routine))
+    layout.addSpacing(ui.SPACING)
+
+    # ------------------------------------------------------------------ spawn
+    ui.section(layout, "Spawn")
+    spawn_worlds = startup_gen.worlds()
+    if npc.spawn_world and npc.spawn_world not in spawn_worlds:
+        spawn_worlds.append(npc.spawn_world)
+
+    world_box = ui.dropdown(
+        spawn_worlds, npc.spawn_world or (spawn_worlds[0] if spawn_worlds else None),
+        lambda v: handlers.assignAttribute("spawn_world", lambda: v))
+    spawn_wp = ui.search_input(
+        waypoints, npc.spawn_waypoint, "Blank = the day waypoint",
+        lambda v: handlers.assignAttribute("spawn_waypoint", lambda: v))
+
+    def on_spawn(enabled):
+        handlers.assignAttribute("spawn", lambda: int(enabled), int)
+        for widget in (world_box, spawn_wp):
+            widget.setEnabled(enabled and bool(spawn_worlds))
+
+    layout.addWidget(ui.checkbox(
+        "Put this NPC into the world", bool(npc.spawn), on_spawn,
+        "Saving to the mod adds Wld_InsertNpc to STARTUP_<world> in "
+        "Story/Startup.d. Without it the NPC exists but never appears."))
+    layout.addSpacing(ui.GAP)
+    ui.field(layout, "World", world_box,
+             "Worlds that have a STARTUP function in Startup.d."
+             if spawn_worlds else "Startup.d has no STARTUP_<world> function yet.")
+    ui.field(layout, "Spawn waypoint", spawn_wp)
+    on_spawn(bool(npc.spawn))
+
     layout.addStretch()

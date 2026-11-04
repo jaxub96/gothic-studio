@@ -56,6 +56,14 @@ class Npc:
         self.day_start = 8            # hour the day shift begins
         self.night_start = 22         # hour the night shift begins
 
+        # --- Spawn ---
+        # Wld_InsertNpc in Startup.d, written when the NPC is saved to the mod.
+        # Not part of the NPC's own .d file, so reading a file back does not
+        # set these; the app looks them up in Startup.d (startup_gen.find_spawn).
+        self.spawn = 0
+        self.spawn_world = ""         # blank = the first world Startup.d knows
+        self.spawn_waypoint = ""      # blank = the day waypoint
+
         # --- Inventory ---  [{"item": str, "quantity": int}, ...]
         self.inv_items = []
         self.talents = set()          # ids from talents.py

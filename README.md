@@ -126,6 +126,7 @@ Plus:
 | `theme.py` | All colours, fonts, sizes. Nothing else hardcodes a colour. |
 | `npc_model.py` | The `Npc` object - one flat list of fields. |
 | `npc_gen.py` | `Npc` -> `.d` text, plus `validate()`. |
+| `startup_gen.py` | Adds/removes `Wld_InsertNpc` lines in `Story/Startup.d` (the Routine tab's Spawn section). |
 | `npc_page.py` | The NPC tab. |
 | `npc_tabs/*.py` | One file per form tab. Each exposes `build(parent, npc, handlers)`. |
 | `npc_handlers.py` | The 2-method glue between widgets and the model. |
@@ -254,6 +255,18 @@ guessed.
   Instant, catches typos before you save.
 - **Compile check** (status bar) - runs `gdc` over the whole mod, same as the
   VS Code "compile check" task. Takes ~3 seconds.
+
+## What Save to mod writes
+
+| Where | File | When |
+|---|---|---|
+| `Story/NPC/` | the NPC `.d` | always |
+| `Story/Dialoge/` | `DIA_<npc>_Teach.d` | when talents are ticked |
+| `Story/Startup.d` | one `Wld_InsertNpc` line in `STARTUP_<world>` | when *Put this NPC into the world* is ticked (Routine tab); unticking removes it |
+
+The Dialog tab's **Save** writes `Story/Dialoge/DIA_<npc>.d` and, for any new log
+topic, `Story/Log_Entries/LOG_Constants_<npc>.d`. **Save as...** never touches
+`Startup.d`.
 
 ## Known limits
 

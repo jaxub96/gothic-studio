@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (QFileDialog, QMessageBox, QTextEdit, QVBoxLayout,
                              QWidget)
 
 import npc_gen
+import startup_gen
 import teach_gen
 import project
 import ui
@@ -140,6 +141,10 @@ class NpcPage(QWidget):
                                 "No Npc_Default instance found in that file.")
             return
 
+        found = startup_gen.find_spawn(npc_gen.instance_name(npc))
+        if found:
+            npc.spawn, npc.spawn_world, npc.spawn_waypoint = 1, found[0], found[1]
+
         lesson = Path(chosen).parent / teach_gen.filename(npc)
         if not lesson.is_file():
             lesson = project.DIA_DIR / teach_gen.filename(npc)
@@ -184,12 +189,22 @@ class NpcPage(QWidget):
         if lesson:
             folder = Path(target).parent if ask else project.DIA_DIR
             project.write_script(folder / teach_gen.filename(self.npc), lesson)
+        # An NPC is only in the game if Startup.d inserts it. That file belongs to
+        # the mod, so it is only touched by a save into the mod, not Save as.
+        spawn_note = ""
+        if not ask:
+            try:
+                spawn_note = startup_gen.sync(npc_gen.instance_name(self.npc), self.npc)
+            except ValueError as exc:
+                spawn_note = f"NOT spawned: {exc}"
         import gamedata
         gamedata.npc_instances.cache_clear()   # so the Dialog page sees it
         # No modal on success. Saving happens dozens of times a session and a
         # dialog to dismiss every time breaks the edit-compile-test loop; the
         # status line under the preview says what happened instead.
         extra = f"  +  {teach_gen.filename(self.npc)}" if lesson else ""
+        if spawn_note:
+            extra += f"  +  {spawn_note}"
         self.side.say(f"Saved  {path.name}{extra}  ->  {path.parent}")
         self.saved.emit(str(path))
 

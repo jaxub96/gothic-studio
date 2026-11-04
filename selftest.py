@@ -394,6 +394,120 @@ def main():
                 p.unlink(missing_ok=True)
             print("  temp files removed")
 
+    # ------------------------------------------------- Startup.d editing (any mod)
+    print("\nStartup.d spawn lines:")
+    import tempfile
+    import startup_gen
+    from pathlib import Path
+    sample = ("// header\r\nfunc void STARTUP_GLOBAL()\r\n{\r\n};\r\n\r\n"
+              "func void STARTUP_ONE()\r\n{\r\n\tWLD_INSERTNPC(AAA_001_A, \"WP_002\");\r\n};\r\n\r\n"
+              "func void STARTUP_TWO()\r\n{\r\n\t//nobody yet\r\n};\r\n")
+    real_file = startup_gen.STARTUP_FILE
+    with tempfile.TemporaryDirectory() as tmp:
+        startup_gen.STARTUP_FILE = Path(tmp) / "Startup.d"
+        startup_gen.STARTUP_FILE.write_bytes(sample.encode("latin-1"))
+        try:
+            check(startup_gen.worlds() == ["ONE", "TWO"], "lists the worlds that have a STARTUP function")
+            check(startup_gen.find_spawn("aaa_001_a") == ("ONE", "WP_002"),
+                  "finds an existing insert (any case)")
+            startup_gen.set_spawn("BBB_002_B", "TWO", "WP_005")
+            startup_gen.set_spawn("AAA_001_A", "TWO", "WP_003")       # moves it
+            text = startup_gen.STARTUP_FILE.read_bytes().decode("latin-1")
+            check(startup_gen.find_spawn("AAA_001_A") == ("TWO", "WP_003")
+                  and text.upper().count("AAA_001_A") == 1,
+                  "moving an NPC to another world never spawns it twice")
+            check("\r\n" in text and text.count("\n") == text.count("\r\n"),
+                  "keeps the file's CRLF line endings")
+            startup_gen.clear_spawn("BBB_002_B")
+            startup_gen.clear_spawn("AAA_001_A")
+            check(startup_gen.STARTUP_FILE.read_bytes().decode("latin-1").replace("\t//nobody yet\r\n", "")
+                  .count("Wld_InsertNpc") == 0, "clearing removes only the NPC's own line")
+            try:
+                startup_gen.set_spawn("X", "NOPE", "WP_1")
+                check(False, "a world with no STARTUP function is refused")
+            except ValueError:
+                check(True, "a world with no STARTUP function is refused")
+        finally:
+            startup_gen.STARTUP_FILE = real_file
+
+    # ------------------------------------------------- Save to mod, end to end
+    if HAVE_MOD:
+        print("\nSave to mod (NPC page + Dialog page, real buttons):")
+        import startup_gen
+        import teach_gen
+        from PyQt6.QtWidgets import QMessageBox
+        from npc_model import Npc
+
+        startup_before = (startup_gen.STARTUP_FILE.read_bytes()
+                          if startup_gen.STARTUP_FILE.is_file() else None)
+        fresh = Npc()
+        fresh.name, fresh.id, fresh.guild = "Zzselftest", "9990", "GIL_MIL"
+        fresh.spawn = 1
+        fresh.spawn_world = (startup_gen.worlds() or [""])[0]
+        fresh.spawn_waypoint = "WP_001"
+        fresh.talents = set()
+        win.npc.npc.__dict__.clear()
+        win.npc.npc.__dict__.update(fresh.__dict__)
+        inst = npc_gen.instance_name(win.npc.npc)
+        saved = []
+        real_question, real_warning = QMessageBox.question, QMessageBox.warning
+        QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes)
+        QMessageBox.warning = staticmethod(lambda *a, **k: None)
+        try:
+            check(not npc_gen.validate(win.npc.npc),
+                  f"the test NPC validates ({npc_gen.validate(win.npc.npc)})")
+            win.npc.saved.connect(saved.append)
+            win.npc._save()
+            npc_file = project.NPC_DIR / npc_gen.default_filename(win.npc.npc)
+            check(npc_file.is_file() and inst in project.read_script(npc_file),
+                  "NPC tab: Save to mod writes the NPC into Story/NPC")
+            if startup_before is not None and fresh.spawn_world:
+                found = startup_gen.find_spawn(inst)
+                check(found == (fresh.spawn_world, "WP_001"),
+                      f"NPC tab: Save to mod puts Wld_InsertNpc into STARTUP_{fresh.spawn_world} ({found})")
+                win.npc.npc.spawn = 0
+                win.npc._save()
+                check(startup_gen.find_spawn(inst) is None,
+                      "NPC tab: unticking spawn removes it from Startup.d on the next save")
+                win.npc.npc.spawn = 1
+                win.npc._save()
+
+            # The Dialog page: the same instance, one scene that logs a new topic.
+            dlg.npc_name_edit.setText("Zzselftest")
+            dlg.npc_id_edit.setCurrentText(inst)
+            blk = dialog_gen.DialogBlock()
+            blk.name, blk.description = "Hello", "Hello"
+            blk.entries = [dialog_gen.DialogLine("self", "Hello there."),
+                           dialog_gen.EffectEntry("log", log_topic="TOPIC_ZzSelftest",
+                                                  log_status="LOG_RUNNING",
+                                                  log_entry="A test entry.")]
+            dlg._collect_blocks = lambda: [blk]
+            dlg._dia_text = lambda: dialog_gen.generate_dia_file("Zzselftest", inst, [blk])
+            dlg._problems = lambda: []
+            dlg._save()
+            dia_file = project.DIA_DIR / f"DIA_{dialog_gen.sanitize(inst)}.d"
+            log_file = project.LOG_DIR / f"LOG_Constants_{dialog_gen.sanitize(inst)}.d"
+            check(dia_file.is_file() and dia_file.name.upper().startswith("DIA"),
+                  "Dialog tab: Save writes a DIA*.d file (the only name Gothic.src compiles)")
+            check(log_file.is_file() and "TOPIC_ZzSelftest" in project.read_script(log_file),
+                  "Dialog tab: Save writes the new log topic constant")
+            ok, errors = project.compile_check()
+            check(ok, "the mod compiles with everything Save wrote")
+            for e in errors[:8]:
+                print("     ", e)
+        finally:
+            QMessageBox.question, QMessageBox.warning = real_question, real_warning
+            for f in (project.NPC_DIR / npc_gen.default_filename(win.npc.npc),
+                      project.DIA_DIR / f"DIA_{dialog_gen.sanitize(inst)}.d",
+                      project.DIA_DIR / teach_gen.filename(win.npc.npc),
+                      project.LOG_DIR / f"LOG_Constants_{dialog_gen.sanitize(inst)}.d"):
+                f.unlink(missing_ok=True)
+            if startup_before is not None:
+                startup_gen.STARTUP_FILE.write_bytes(startup_before)
+            gamedata.npc_instances.cache_clear()
+            gamedata.log_topics.cache_clear()
+            print("  temp files removed, Startup.d restored")
+
     # CP1250 round-trip on a Polish string
     npc_path = project.NPC_DIR / "ZZ_SELFTEST.d"
     project.write_script(npc_path, 'name = "Cześć";')
