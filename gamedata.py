@@ -73,14 +73,22 @@ def item_visuals():
     return out
 
 
+def is_female_armor(code):
+    """Women's armors are the ITAR_*Babe* ones (BauBabe, VlkBabe, DJG_BABE)."""
+    return "babe" in str(code).lower()
+
+
 @lru_cache
-def armors_by_guild():
+def armors_by_guild(gender=None):
     """Armors grouped by their guild tag, for the armor tree.
 
     ITAR_Vlk_H -> group 'VLK'. Anything that does not parse lands in 'Other'.
+    With a `gender`, only the armors that gender wears.
     """
     groups = {}
     for code, name in armors().items():
+        if gender and is_female_armor(code) != (str(gender).upper() == "FEMALE"):
+            continue
         parts = code.split("_")
         tag = parts[1].upper() if len(parts) > 2 else "Other"
         groups.setdefault(tag, []).append((code, name))

@@ -29,11 +29,22 @@ def build(parent: QWidget, npc, handlers) -> None:
     armor_panel = TexturePanel("Worn", height=116)
 
     # One dropdown, grouped by guild in the label: "Militia - Light armor (ITAR_Mil_L)".
-    armor_codes = {"(no armor)": NO_ARMOR}
-    for group, entries in gamedata.armors_by_guild().items():
-        for code, name in entries:
-            armor_codes[f"{labels.ARMOR_GROUP.get(group, group)} - {name}   ({code})"] = code
-    code_labels = {code: text for text, code in armor_codes.items()}
+    # Only the armors the NPC's gender wears; see fill_armors().
+    armor_codes = {}
+    code_labels = {}
+    shown_gender = [None]
+
+    def fill_armors():
+        armor_codes.clear()
+        armor_codes["(no armor)"] = NO_ARMOR
+        for group, entries in gamedata.armors_by_guild(npc.gender).items():
+            for code, name in entries:
+                armor_codes[f"{labels.ARMOR_GROUP.get(group, group)} - {name}   ({code})"] = code
+        code_labels.clear()
+        code_labels.update({code: text for text, code in armor_codes.items()})
+        shown_gender[0] = npc.gender
+
+    fill_armors()
 
     def show_armor(code):
         armor_panel.show_texture(
@@ -51,6 +62,21 @@ def build(parent: QWidget, npc, handlers) -> None:
     armor_box = ui.dropdown(list(armor_codes), code_labels.get(npc.armor, "(no armor)"),
                             on_armor)
     ui.field(layout, "Worn armor", armor_box)
+
+    def sync_gender():
+        """Offer the other gender's armors, dropping one that no longer fits."""
+        if npc.gender == shown_gender[0]:
+            return
+        fill_armors()
+        armor_box.blockSignals(True)
+        armor_box.clear()
+        armor_box.addItems(list(armor_codes))
+        if npc.armor not in code_labels:
+            npc.armor = NO_ARMOR
+        armor_box.setCurrentText(code_labels[npc.armor])
+        armor_box.blockSignals(False)
+        show_armor(npc.armor)
+        handlers.refresh()
 
     armor_row = ui.row(ui.SPACING)
     armor_row.addWidget(armor_panel)
@@ -122,8 +148,8 @@ def build(parent: QWidget, npc, handlers) -> None:
 
     redraw()
     show_armor(npc.armor)
-
     def resync():
+        sync_gender()
         redraw()
         armor_box.blockSignals(True)
         armor_box.setCurrentText(code_labels.get(npc.armor, "(no armor)"))

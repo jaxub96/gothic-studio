@@ -272,7 +272,18 @@ def main():
     check(back.face == npc.face and back.body_tex == npc.body_tex,
           "female face and skin are read back from the numbers")
     npc.gender = "MALE"
+    npc.armor = "ITAR_VLK_M"
     win.npc.refresh()
+    npc.gender = "FEMALE"
+    win.npc.refresh()
+    check(npc.armor == "-1", "a male armor is dropped when switching to female")
+    npc.armor = "ITAR_VlkBabe_M"
+    npc.gender = "MALE"
+    win.npc.refresh()
+    check(npc.armor == "-1", "a female armor is dropped when switching back to male")
+    check(all(gamedata.is_female_armor(a) for g in gamedata.armors_by_guild("FEMALE").values() for a, _ in g)
+          and not any(gamedata.is_female_armor(a) for g in gamedata.armors_by_guild("MALE").values() for a, _ in g),
+          "armor lists are split by gender")
     check(npc.head in gamedata.heads_for("MALE") and npc.overlay != gamedata.FEMALE_WALK
           and int(npc.voice) not in gamedata.FEMALE_VOICES,
           "switching back to male restores male head, walk and voice")
