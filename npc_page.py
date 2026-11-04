@@ -8,7 +8,7 @@ and announces the instance name it built so the Dialog page can pick it up.
 from pathlib import Path
 
 from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import (QFileDialog, QMessageBox, QTextEdit, QVBoxLayout,
+from PyQt6.QtWidgets import (QFileDialog, QMessageBox, QVBoxLayout,
                              QWidget)
 
 import npc_gen
@@ -25,7 +25,7 @@ from theme import DaedalusHighlighter, mono_font
 
 
 class NpcPage(QWidget):
-    #: fires whenever the computed instance name changes, e.g. "GRD_001_Arideus"
+    #: fires whenever the computed instance name changes, e.g. "GRD_001_Name"
     instance_changed = pyqtSignal(str)
     #: the plain display name, so the Dialog tab does not make you retype it
     name_changed = pyqtSignal(str)
@@ -55,17 +55,11 @@ class NpcPage(QWidget):
         self.model_view = ModelView(self.npc)
         self.side.add_tab(self.model_view, "3D view")
 
-        self.preview = QTextEdit()
-        self.preview.setReadOnly(True)
-        self.preview.setFont(mono_font())
-        self.preview.setStyleSheet(ui.code_view_css())
+        self.preview = ui.code_view(mono_font())
         DaedalusHighlighter(self.preview.document())
         self.side.add_tab(self.preview, "Script")
 
-        self.teaching = QTextEdit()
-        self.teaching.setReadOnly(True)
-        self.teaching.setFont(mono_font())
-        self.teaching.setStyleSheet(ui.code_view_css())
+        self.teaching = ui.code_view(mono_font())
         DaedalusHighlighter(self.teaching.document())
         self.side.add_tab(self.teaching, "Teaching")
         self.side.tabs.currentChanged.connect(self._preview_tab_changed)

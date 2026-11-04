@@ -10,10 +10,10 @@ if anything fails, so it works as a pre-commit check too.
 """
 
 import os
+import re
 import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ.setdefault("GOTHIC_STUDIO_DEV", "1")   # no mod: write into .devmod/
 os.environ.setdefault("GOTHIC_STUDIO_DEV", "1")   # no mod: write into .devmod/
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -311,8 +311,10 @@ def main():
     # ---------------------------------------------------------- Dialog page
     print("\ndialog generation:")
     dlg = win.dialog
-    dlg.npc_name_edit.setText("Arideus")
-    dlg.npc_id_edit.setCurrentText("GRD_001_ARIDEUS")
+    # the selftest NPC itself, so the compile step below has its instance
+    dia_inst = npc_gen.instance_name(npc).upper()
+    dlg.npc_name_edit.setText(npc.name)
+    dlg.npc_id_edit.setCurrentText(dia_inst)
     b, ed = dlg._add_block()
     b.name = "SELFTEST"
     b.entries = [
@@ -336,8 +338,18 @@ def main():
     check("ZS_Follow_Player" in text and "ZS_FOLLOW," not in text,
           "emits ZS_Follow_Player, not ZS_FOLLOW")
     if HAVE_MOD:
-        check("DIA_GRD_001_ARIDEUS_EXIT" not in text,
-              "suppresses a duplicate EXIT block")
+        check(f"DIA_{dia_inst}_EXIT" in text, "emits an EXIT block for a new NPC")
+        taken = None                       # any NPC the mod already gives an EXIT
+        for f in project.iglob(project.DIA_DIR, "DIA*.d"):
+            m = re.search(r"\bINSTANCE\s+DIA_(\w+)_EXIT\b", project.read_script(f), re.I)
+            if m:
+                taken = m.group(1).upper()
+                break
+        if taken:
+            dlg.npc_id_edit.setCurrentText(taken)
+            check(f"DIA_{taken}_EXIT" not in dlg._dia_text(),
+                  "suppresses a duplicate EXIT block")
+            dlg.npc_id_edit.setCurrentText(dia_inst)
 
     # a condition may name a sibling scene by its short name; the export must use the instance
     b2, ed2 = dlg._add_block()
@@ -346,7 +358,7 @@ def main():
     b2.entries = [dialog_gen.DialogLine("self", "Dalej.")]
     ed2.load_block(b2)
     text = dlg._dia_text()
-    check("Npc_KnowsInfo (other, DIA_GRD_001_ARIDEUS_SELFTEST)" in text,
+    check(f"Npc_KnowsInfo (other, DIA_{dia_inst}_SELFTEST)" in text,
           "a sibling scene name in a condition exports as its DIA_ instance")
     check(not any("condition names" in p for p in dlg._problems()),
           "a sibling scene name in a condition validates")
@@ -359,8 +371,9 @@ def main():
     text = dlg._dia_text()
 
     # ---------------------------------------------------------- round-trip
-    existing = project.DIA_DIR / "DIA_GRD_001_Arideus.d"
-    if existing.exists():
+    existing = next((f for f in project.iglob(project.DIA_DIR, "DIA*.d")
+                     if "B_GIVEPLAYERXP" in project.read_script(f).upper()), None)
+    if existing:
         _, nid, blocks = dialog_gen.parse_dia_file(project.read_script(existing))
         spoken = sum(len(bl.lines()) for bl in blocks)
         xp = [e for bl in blocks for e in bl.entries
@@ -375,7 +388,7 @@ def main():
         dia_path = project.DIA_DIR / "DIA_ZZSELFTEST.d"
         log_path = project.LOG_DIR / "LOG_Constants_ZZSELFTEST.d"
         consts = dialog_gen.generate_constants_file(
-            "GRD_001_ARIDEUS", dlg._collect_blocks(), tuple(gamedata.log_topics()))
+            dia_inst, dlg._collect_blocks(), tuple(gamedata.log_topics()))
         try:
             project.write_script(npc_path, npc_gen.build_npc(npc))
             project.write_script(dia_path, text)

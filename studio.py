@@ -50,6 +50,11 @@ class Studio(QMainWindow):
         tabs.addTab(self.npc, "NPC")
         tabs.addTab(self.dialog, "Dialog")
         self.setCentralWidget(tabs)
+        # The NPC page's side list sits right under the NPC / Dialog tabs; size
+        # it to the tab bar so its right rule continues the Dialog tab's edge.
+        # Tab widths come from font metrics, so a constant would drift.
+        tabs.tabBar().ensurePolished()
+        self.npc.tabs.set_list_width(tabs.tabBar().sizeHint().width())
 
         # The one connection that makes this a single app rather than two.
         self.npc.instance_changed.connect(self.dialog.set_npc_id)

@@ -10,7 +10,7 @@ import os
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QFileDialog, QMessageBox, QScrollArea, QSplitter,
-                             QStackedWidget, QTextEdit, QVBoxLayout, QWidget)
+                             QStackedWidget, QVBoxLayout, QWidget)
 
 import gamedata
 import project
@@ -48,15 +48,10 @@ class DialogPage(QWidget):
         # The spoken lines on their own - the same thing Export text writes,
         # and what you want when you are reading the conversation rather than
         # the code.
-        self.text_preview = QTextEdit()
-        self.text_preview.setReadOnly(True)
-        self.text_preview.setStyleSheet(ui.code_view_css())
+        self.text_preview = ui.code_view()
         self.side.add_tab(self.text_preview, "Spoken text")
 
-        self.dia_preview = QTextEdit()
-        self.dia_preview.setReadOnly(True)
-        self.dia_preview.setFont(mono_font())
-        self.dia_preview.setStyleSheet(ui.code_view_css())
+        self.dia_preview = ui.code_view(mono_font())
         DaedalusHighlighter(self.dia_preview.document())
         self.side.add_tab(self.dia_preview, "Script")
 

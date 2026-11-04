@@ -19,6 +19,7 @@ Layout vocabulary
   row()             plain container with the standard gap
 
 Controls
+  code_view   read-only script panel, Ctrl+wheel / Ctrl +/-/0 zooms
   text_input  dropdown  search_dropdown  search_input
   slider  spin  checkbox  radio_row  tree  listbox
 
@@ -26,13 +27,15 @@ Buttons
   button(text, on_click, variant=...)  variants: primary, default, subtle, danger
 """
 
+import weakref
+
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QFrame,
                              QTabWidget,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget,
                              QPushButton, QRadioButton, QSlider, QSpinBox, QStackedWidget,
-                             QTreeWidget, QVBoxLayout, QWidget)
+                             QTextEdit, QTreeWidget, QVBoxLayout, QWidget)
 
 from theme import THEME
 
@@ -569,6 +572,10 @@ class SideTabs(QWidget):
             self._stack.setCurrentIndex(index)
             self.currentChanged.emit(index)
 
+    def set_list_width(self, width):
+        """Resize the tab list, e.g. so its right rule meets another edge."""
+        self._list.setFixedWidth(width)
+
     def clear(self):
         """Drop every tab and its page, so the pages can be rebuilt."""
         self._list.clear()
@@ -673,13 +680,73 @@ def report_omissions(parent, title, notes, limit=25):
         f"and will not be written back:{chr(10)}{chr(10)}{shown}{more}")
 
 
-def code_view_css():
+def code_view_css(size=None):
     """The read-only script preview."""
+    size = size or THEME["font_size_code"]
     return (f"QTextEdit {{ background:{THEME['bg_code']}; "
             f"  color:{THEME['text_primary']}; border:none; "
             f"  font-family:{THEME['font_code']}; "
-            f"  font-size:{THEME['font_size_code']}pt; "
+            f"  font-size:{size}pt; "
             f"  border-radius:{THEME['radius_md']}; padding:12px; }}")
+
+
+class CodeView(QTextEdit):
+    """Read-only script panel that zooms with Ctrl+wheel and Ctrl +/-/0.
+
+    Every panel shares one text size, so zooming the NPC script also zooms the
+    dialog script - you set the size you can read once. The size lives in the
+    stylesheet (which beats setFont), so QTextEdit's own zoomIn has no effect
+    and zooming re-applies the stylesheet instead.
+    """
+    MIN_SIZE, MAX_SIZE = 6, 36
+    _size = THEME["font_size_code"]
+    _views = weakref.WeakSet()
+
+    def __init__(self, font=None):
+        super().__init__()
+        self.setReadOnly(True)
+        if font is not None:
+            self.setFont(font)
+        CodeView._views.add(self)
+        self.setStyleSheet(code_view_css(CodeView._size))
+
+    @classmethod
+    def set_size(cls, size):
+        size = max(cls.MIN_SIZE, min(cls.MAX_SIZE, size))
+        if size == cls._size:
+            return
+        cls._size = size
+        for view in list(cls._views):
+            view.setStyleSheet(code_view_css(size))
+
+    def wheelEvent(self, event):
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            step = event.angleDelta().y()
+            if step:
+                CodeView.set_size(CodeView._size + (1 if step > 0 else -1))
+            event.accept()
+            return
+        super().wheelEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            key = event.key()
+            # Ctrl+= is Ctrl++ without Shift on most layouts
+            if key in (Qt.Key.Key_Plus, Qt.Key.Key_Equal):
+                CodeView.set_size(CodeView._size + 1)
+                return
+            if key == Qt.Key.Key_Minus:
+                CodeView.set_size(CodeView._size - 1)
+                return
+            if key == Qt.Key.Key_0:
+                CodeView.set_size(THEME["font_size_code"])
+                return
+        super().keyPressEvent(event)
+
+
+def code_view(font=None):
+    """A read-only script panel; see CodeView."""
+    return CodeView(font)
 
 
 # --- pick the control that matches the data ----------------------------------

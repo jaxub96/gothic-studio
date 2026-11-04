@@ -1,8 +1,8 @@
 """
 npc_gen.py - turns an Npc into a .d file the compiler accepts.
 
-The template mirrors Content/Story/NPC/GRD_001_Arideus.d, which is the
-hand-corrected version of what the old NPC Studio produced. The old output
+The template mirrors a hand-corrected vanilla-style NPC file - the fixed
+version of what the old NPC Studio produced. The old output
 failed to compile on three calls:
 
     Mdl_SetNpcVisual  -> not an external in Gothic 2; use B_SetNpcVisual
@@ -33,7 +33,7 @@ def guild_tag(npc):
 
 
 def instance_name(npc):
-    """e.g. GRD_001_Arideus - guild tag, zero-padded id, name."""
+    """e.g. GRD_001_Name - guild tag, zero-padded id, name."""
     return f"{guild_tag(npc)}_{npc.id}_{safe_name(npc)}"
 
 
@@ -138,7 +138,7 @@ def routine_lines(npc, wp=None):
 
 
 def default_filename(npc):
-    """Vanilla naming: the instance name plus .d, e.g. GRD_001_Arideus.d"""
+    """Vanilla naming: the instance name plus .d, e.g. GRD_001_Name.d"""
     return f"{instance_name(npc)}.d"
 
 

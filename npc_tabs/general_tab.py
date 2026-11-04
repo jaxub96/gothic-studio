@@ -22,10 +22,10 @@ def build(parent: QWidget, npc, handlers) -> None:
 
     # Name and ID are one thought - who this is - so they share a row.
     # The ID is stored zero-padded because that is how the game writes instance
-    # names: GRD_001_Arideus, not GRD_1_Arideus.
+    # names: GRD_001_Name, not GRD_1_Name.
     ui.field_group(layout, [
         ("Name", ui.text_input(
-            npc.name, "Arideus",
+            npc.name, "",
             lambda v: handlers.assignAttribute("name", lambda: v)), 1),
         ("ID", ui.number(
             0, 999, int(npc.id or 0),
