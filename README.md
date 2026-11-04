@@ -4,6 +4,10 @@ NPC creator + dialog editor in one app. A merge of `Gothic-2-NPC-Studio`
 and `tools/Daedalogue`, with the Gothic 1 data replaced by whatever is actually
 in `Content/`.
 
+**Your mod's own scripts** - guilds, constants, items, sample NPCs, dialogs
+and a quest - live in [`mod/`](mod/README.md). `python mod/install.py` puts them
+into the mod Gothic Studio is using.
+
 ## Run it
 
 **As an exe** — double-click `dist/GothicStudio.exe` (after building it). Nothing to install.
@@ -115,6 +119,7 @@ Plus:
 | `selftest.py` | Headless end-to-end check: drives every widget, then compiles with gdc. Without a mod it runs only the data-independent checks. |
 | `project.py` | **Every path and the encoding.** Change this if you move the tool. |
 | `gamedata.py` | Scrapes `Content/` for real identifiers. `python gamedata.py` prints what it found. |
+| `mod/` | The mod's script package (guilds, constants, sample content) and its installer. See [mod/README.md](mod/README.md). |
 | `labels.py` | Readable names for constants (`GIL_MIL` -> "Militia"). Presentation only. |
 | `textures.py` | Reads Gothic's ZTEX/DXT textures and the `.vdf` archives. `python textures.py` self-checks. |
 | `texture_view.py` | Turns those into the preview panels. |

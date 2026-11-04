@@ -28,16 +28,17 @@ def build(parent: QWidget, npc, handlers) -> None:
             npc.name, "",
             lambda v: handlers.assignAttribute("name", lambda: v)), 1),
         ("ID", ui.number(
-            0, 999, int(npc.id or 0),
+            0, 99999, int(npc.id or 0),
             lambda v: handlers.assignAttribute("id", lambda: f"{v:03d}"),
             width=88), 0),
     ])
 
     ui.section(layout, "Allegiance")
 
+    guild_names = {**labels.GUILD, **gamedata.guild_names()}   # the mod's names win
     ui.field(layout, "Guild",
-             ui.dropdown(labels.label_list(labels.GUILD, gamedata.guilds()),
-                         labels.pretty(labels.GUILD, npc.guild),
+             ui.dropdown(labels.label_list(guild_names, gamedata.guilds()),
+                         labels.pretty(guild_names, npc.guild),
                          lambda t: handlers.assignAttribute(
                              "guild", lambda: labels.raw(t))))
 
