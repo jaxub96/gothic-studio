@@ -117,8 +117,25 @@ def routines():
 
 @lru_cache
 def heads():
-    """Head meshes referenced by the scripts in this install."""
-    return sorted({h.upper() for h in _scan("**/*.d", r'"(HUM_HEAD_\w+)"')})
+    """Head meshes referenced by the scripts in this install, plus the female
+    ones (HUM_HEAD_BABE*) the game ships even when no script names them."""
+    import textures
+
+    found = {h.upper() for h in _scan("**/*.d", r'"(HUM_HEAD_\w+)"')}
+    for key in textures._mesh_index():
+        m = re.fullmatch(r"(HUM_HEAD_BABE\w*)\.MMB", key)
+        if m:
+            found.add(m.group(1))
+    return sorted(found)
+
+
+def is_female_head(name):
+    return str(name).upper().startswith("HUM_HEAD_BABE")
+
+
+#: Voice sets spoken by women. SVM_16 and SVM_17 are the two full sets that are
+#: not the male voices 1-15 (SVM_0 and SVM_18 are empty placeholders).
+FEMALE_VOICES = (16, 17)
 
 
 def _const_values(prefix):
@@ -132,51 +149,94 @@ def _const_values(prefix):
     return out
 
 
-@lru_cache
-def body_texture_values():
-    """BodyTex_N -> 1. The number is what picks HUM_BODY_NAKED_V<n>_C0."""
-    return _const_values("BodyTex_")
+# --- Female faces and skins --------------------------------------------------
+# The game ships head and body textures for women that this install's scripts
+# give no constant to. They are offered under a name of their own and written to
+# the .d file as the bare number, which is all B_SetNpcVisual needs.
+
+FEMALE_FACE_PREFIX = "Face_Babe_"
+FEMALE_BODY_PREFIX = "BodyTex_Babe_"
+
+#: HUM_BODY_NAKED_V<n>_C0 textures drawn for the female body (V4-V7 are bare
+#: skin in four tones, V11 and V12 are special outfits). Found by rendering
+#: every V0..V12 on HUM_BODY_BABE0 - the rest are male chests or male clothes.
+FEMALE_BODY_TEXTURES = (4, 5, 6, 7, 11, 12)
 
 
-UNNAMED_FACE = "Face_Unnamed_"
+def _is_female(name, *prefixes):
+    return str(name).lower().startswith(tuple(p.lower() for p in prefixes))
+
+
+def is_female_face(name):
+    return _is_female(name, FEMALE_FACE_PREFIX, "FaceBabe_")
+
+
+def is_female_body(name):
+    return _is_female(name, FEMALE_BODY_PREFIX, "BodyTexBabe_")
 
 
 @lru_cache
 def face_values():
     """Face_N_Gomez -> 0. The number is what picks HUM_HEAD_V<n>_C0.
 
-    The game ships head textures that no script gives a name. They are listed
-    too, as Face_Unnamed_<n>, so they can be picked; see `face_code`.
+    Head textures that no script names are added as Face_Babe_<n>.
     """
-    import re as _re
     import textures
 
     out = dict(_const_values("Face_"))
     named = set(out.values())
     for key in textures._index():
-        m = _re.fullmatch(r"HUM_HEAD_V(\d+)_C0", key)
+        m = re.fullmatch(r"HUM_HEAD_V(\d+)_C0", key)
         if m and int(m.group(1)) not in named:
-            out[f"{UNNAMED_FACE}{m.group(1)}"] = int(m.group(1))
+            out[f"{FEMALE_FACE_PREFIX}{m.group(1)}"] = int(m.group(1))
     return out
 
 
+@lru_cache
+def body_texture_values():
+    """BodyTex_N -> 1. The number is what picks HUM_BODY_NAKED_V<n>_C0.
+
+    The female skins are added as BodyTex_Babe_<n>.
+    """
+    import textures
+
+    out = dict(_const_values("BodyTex_"))
+    named = set(out.values())
+    for n in FEMALE_BODY_TEXTURES:
+        if n not in named and f"HUM_BODY_NAKED_V{n}_C0" in textures._index():
+            out[f"{FEMALE_BODY_PREFIX}{n}"] = n
+    return out
+
+
+def _code(name, prefix):
+    """What to write in a script: the number for a synthesised name."""
+    name = str(name)
+    return name[len(prefix):] if name.lower().startswith(prefix.lower()) else name
+
+
+def _from_code(code, values, prefix):
+    code = str(code).strip()
+    if code.isdigit():
+        for name, value in values.items():
+            if value == int(code) and name.startswith(prefix):
+                return name
+    return code
+
+
 def face_code(face):
-    """What to write in a script for this face. An unnamed face has no
-    constant to refer to, so it is written as its number."""
-    if str(face).lower().startswith(UNNAMED_FACE.lower()):
-        return str(face)[len(UNNAMED_FACE):]
-    return face
+    return _code(face, FEMALE_FACE_PREFIX)
 
 
 def face_from_code(code):
-    """The reverse: a bare number read from a script -> its Face_Unnamed_<n>
-    name, if no real constant has that value. Anything else is returned as is."""
-    code = str(code).strip()
-    if code.isdigit():
-        for name, value in face_values().items():
-            if value == int(code) and name.startswith(UNNAMED_FACE):
-                return name
-    return code
+    return _from_code(code, face_values(), FEMALE_FACE_PREFIX)
+
+
+def body_code(body):
+    return _code(body, FEMALE_BODY_PREFIX)
+
+
+def body_from_code(code):
+    return _from_code(code, body_texture_values(), FEMALE_BODY_PREFIX)
 
 
 @lru_cache
@@ -202,7 +262,11 @@ def overlays():
     """
     from project import MDS_OVERLAY
 
-    skip = re.compile(r"(ST1|ST2|T1|T2|Acrobatic|Skeleton_Fly)", re.I)
+    # Not walk styles: weapon stances, plus movement or situation sets the engine
+    # switches to by itself (fleeing, sprinting, swimming, a held torch) and
+    # the skeleton's own.
+    skip = re.compile(r"(ST1|ST2|T1|T2|Acrobatic|Skeleton|Flee|Sprint|Swim|Torch)",
+                      re.I)
     if MDS_OVERLAY.is_dir():
         found = {f.stem.upper() + ".MDS" for f in iglob(MDS_OVERLAY, "Humans_*.mds")
                  if not skip.search(f.stem)}
@@ -217,6 +281,41 @@ def overlays():
               "HUMANS_MAGE.MDS", "HUMANS_TIRED.MDS", "HUMANS_BABE.MDS"]
     first = [c for c in common if c in found]
     return first + sorted(found - set(first))
+
+
+FEMALE_WALK = "HUMANS_BABE.MDS"
+
+
+# --- What each gender may pick ----------------------------------------------
+# Women and men have their own head meshes, face and skin textures, walk and
+# voice sets; offering the other's gives a character that looks or sounds wrong.
+
+def _female(gender):
+    return str(gender).upper() == "FEMALE"
+
+
+def heads_for(gender):
+    return [h for h in heads() if is_female_head(h) == _female(gender)]
+
+
+def faces_for(gender):
+    return [f for f in faces() if is_female_face(f) == _female(gender)]
+
+
+def body_textures_for(gender):
+    values = body_texture_values()
+    mine = [b for b in body_textures() if is_female_body(b) == _female(gender)]
+    return sorted(mine, key=lambda b: (values[b], b.lower()))
+
+
+def overlays_for(gender):
+    """Women get the female walk first; men do not get it at all."""
+    others = [o for o in overlays() if o != FEMALE_WALK]
+    return [FEMALE_WALK] + others if _female(gender) and FEMALE_WALK in overlays() else others
+
+
+def voices_for(gender):
+    return [v for v in voices() if (v in FEMALE_VOICES) == _female(gender)]
 
 
 @lru_cache

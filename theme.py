@@ -46,7 +46,7 @@ THEME = {
     "font_size_tiny":   "15px",
     "font_size_title":  "22px",
     "font_size_placeholder": "21px",
-    "font_size_code":   8,           # pt, used for QFont object
+    "font_size_code":   10,          # pt, used for QFont object
 
     # ── Geometry ──────────────────────────────────────────────────────────────
     "radius_sm":        "0px",
@@ -56,7 +56,7 @@ THEME = {
     "topbar_height":    56,
     "sidebar_width":    212,
     "splitter_sizes":   [212, 620, 500],
-    "window_size":      (1460, 940),
+    "window_size":      (1240, 780),
 
     # ── Spacing ───────────────────────────────────────────────────────────────
     "label_col_width":  "44px",

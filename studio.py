@@ -40,7 +40,7 @@ class Studio(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Gothic Studio")
-        self.resize(*THEME["window_size"])
+        self._size_and_centre()
         self.setStyleSheet(SS["global"])
 
         self.npc = npc_page.build()
@@ -58,6 +58,16 @@ class Studio(QMainWindow):
         self.npc.saved.connect(lambda p: self.statusBar().showMessage(f'Saved {p}', 6000))
 
         self._status_bar()
+
+    def _size_and_centre(self):
+        """Open at a modest size (never bigger than 90% of the screen), centred."""
+        want_w, want_h = THEME["window_size"]
+        area = self.screen().availableGeometry()
+        self.resize(min(want_w, int(area.width() * 0.9)),
+                    min(want_h, int(area.height() * 0.9)))
+        frame = self.frameGeometry()
+        frame.moveCenter(area.center())
+        self.move(frame.topLeft())
 
     def _status_bar(self):
         bar = QStatusBar()

@@ -253,7 +253,7 @@ def _render(models, width, height, yaw, pitch, background, margin,
         nx, ny, nz = (ay * bz2 - az * by2, az * bx2 - ax * bz2, ax * by2 - ay * bx2)
         nl = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
         lam = (nx * light[0] + ny * light[1] + nz * light[2]) / nl
-        shade = 0.45 + 0.55 * max(0.0, lam)
+        shade = 0.62 + 0.38 * max(0.0, lam)
 
         x0 = max(0, int(min(sx)));  x1 = min(width - 1, int(max(sx)) + 1)
         y0 = max(0, int(min(sy)));  y1 = min(height - 1, int(max(sy)) + 1)

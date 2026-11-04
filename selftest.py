@@ -253,17 +253,33 @@ def main():
     check(win.dialog.npc_name_edit.text() == "Linked",
           "NPC tab feeds its display name to the Dialog tab")
 
-    # A face texture no script names is written as its number and read back.
-    unnamed = next((f for f in gamedata.faces() if f.startswith(gamedata.UNNAMED_FACE)), None)
-    if unnamed:
-        saved_face, npc.face = npc.face, unnamed
-        text = npc_gen.build_npc(npc)
-        number = gamedata.face_code(unnamed)
-        check(f", {number}, " in text and unnamed not in text,
-              f"an unnamed face is emitted as its number ({unnamed} -> {number})")
-        check(npc_gen.parse_npc(text).face == unnamed,
-              "an unnamed face is read back from the number")
-        npc.face = saved_face
+    # Female faces and skins have no script constant: they are written as their
+    # number and read back, and switching gender swaps every dependent list.
+    saved = (npc.face, npc.body_tex, npc.gender, npc.head, npc.voice, npc.overlay)
+    npc.gender = "FEMALE"
+    win.npc.refresh()
+    check(npc.head in gamedata.heads_for("FEMALE") and npc.face in gamedata.faces_for("FEMALE")
+          and npc.body_tex in gamedata.body_textures_for("FEMALE"),
+          f"switching to female picks a female head, face and skin "
+          f"({npc.head}, {npc.face}, {npc.body_tex})")
+    check(npc.overlay == gamedata.FEMALE_WALK and int(npc.voice) in gamedata.FEMALE_VOICES,
+          f"...the female walk and a female voice ({npc.overlay}, voice {npc.voice})")
+    text = npc_gen.build_npc(npc)
+    face_n, body_n = gamedata.face_code(npc.face), gamedata.body_code(npc.body_tex)
+    check(f", {face_n}, {body_n}, " in text and "Babe_" not in text.split("B_SetNpcVisual")[1].split(";")[0],
+          f"female face and skin are emitted as numbers ({npc.face} -> {face_n}, {npc.body_tex} -> {body_n})")
+    back = npc_gen.parse_npc(text)
+    check(back.face == npc.face and back.body_tex == npc.body_tex,
+          "female face and skin are read back from the numbers")
+    npc.gender = "MALE"
+    win.npc.refresh()
+    check(npc.head in gamedata.heads_for("MALE") and npc.overlay != gamedata.FEMALE_WALK
+          and int(npc.voice) not in gamedata.FEMALE_VOICES,
+          "switching back to male restores male head, walk and voice")
+    check("HUMANS_FLEE.MDS" not in gamedata.overlays() and "HUMANS_SWIM.MDS" not in gamedata.overlays(),
+          "walk styles exclude flee/sprint/swim/torch/skeleton sets")
+    npc.face, npc.body_tex, npc.gender, npc.head, npc.voice, npc.overlay = saved
+    win.npc.refresh()
 
     # ---------------------------------------------------------- routines
     print("\nday/night routine:")

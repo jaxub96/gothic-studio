@@ -78,7 +78,7 @@ def build_npc(npc):
     a("")
     a("\t// ---------------- visuals ----------------")
     a(f'\tB_SetNpcVisual\t\t(self, {npc.gender}, "{npc.head}", '
-      f"{gamedata.face_code(npc.face)}, {npc.body_tex}, {armor});")
+      f"{gamedata.face_code(npc.face)}, {gamedata.body_code(npc.body_tex)}, {armor});")
     a(f'\tMdl_ApplyOverlayMds\t(self, "{npc.overlay}");')
     a(f"\tMdl_SetModelFatness\t(self, {npc.fatness});")
     a("")
@@ -303,7 +303,7 @@ def parse_npc(text):
             npc.gender = args[1].upper()
             npc.head = canon(unquote(args[2]).rstrip(". "), gamedata.heads())
             npc.face = canon(gamedata.face_from_code(args[3]), gamedata.faces())
-            npc.body_tex = canon(args[4], gamedata.body_textures())
+            npc.body_tex = canon(gamedata.body_from_code(args[4]), gamedata.body_textures())
             npc.armor = "-1" if args[5] in ("-1", "NO_ARMOR") else canon(args[5], gamedata.armors())
         elif call == "mdl_applyoverlaymds" and len(args) >= 2 and not overlay_seen:
             npc.overlay = canon(unquote(args[1]), gamedata.overlays())

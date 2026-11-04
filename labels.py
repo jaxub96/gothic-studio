@@ -56,9 +56,14 @@ HEAD = {
     "HUM_HEAD_PONY": "Ponytail",
     "HUM_HEAD_PSIONIC": "Psionic",
     "HUM_HEAD_BABE": "Female",
+    **{f"HUM_HEAD_BABE{n}": f"Female {n}" for n in range(1, 9)},
+    "HUM_HEAD_BABEHAIR": "Female, long hair",
 }
 
 BODY = {
+    "BodyTex_Babe_4": "Fair", "BodyTex_Babe_5": "Light tan", "BodyTex_Babe_6": "Tan",
+    "BodyTex_Babe_7": "Dark", "BodyTex_Babe_11": "Black leather outfit",
+    "BodyTex_Babe_12": "Lace outfit",
     "BodyTex_P": "Pale",
     "BodyTex_N": "Normal",
     "BodyTex_L": "Latino",
@@ -74,11 +79,6 @@ OVERLAY = {
     "HUMANS_MAGE.MDS": "Mage - measured",
     "HUMANS_TIRED.MDS": "Tired - weary",
     "HUMANS_BABE.MDS": "Female",
-    "HUMANS_FLEE.MDS": "Fleeing",
-    "HUMANS_SPRINT.MDS": "Sprinting",
-    "HUMANS_SWIM.MDS": "Swimming",
-    "HUMANS_TORCH.MDS": "Carrying a torch",
-    "HUMANS_SKELETON.MDS": "Skeleton",
 }
 
 # Armor tree groups. The tag is pulled out of ITAR_<TAG>_<weight>.

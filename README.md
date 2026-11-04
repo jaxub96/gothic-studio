@@ -264,5 +264,8 @@ guessed.
 - Waypoints are read from the `.zen` files in `Data/Worlds` (next to `Scripts`),
   plus `.check/worldnames.json` if one exists. With no worlds folder the
   waypoint field is a free-text box instead of a searchable list.
-- Head textures that no script names (V137-V158 here) are listed as
-  `Face_Unnamed_<n>` and written to the `.d` file as the bare number.
+- Women's face textures that no script names (V137-V158 here) are listed as
+  `Face_Babe_<n>`, and the female skins as `BodyTex_Babe_<n>`; both are written
+  to the `.d` file as the bare number. Which skins are female
+  (`FEMALE_BODY_TEXTURES`) and which voices (`FEMALE_VOICES`) is set in
+  `gamedata.py`.

@@ -109,7 +109,7 @@ class DialogPage(QWidget):
         col.setSpacing(ui.GAP)
 
         who = ui.row()
-        self.npc_name_edit = ui.text_input(placeholder="Arideus")
+        self.npc_name_edit = ui.text_input()
         self.npc_name_edit.setFixedWidth(170)
         self.npc_id_edit = ui.dropdown([])
         self.npc_id_edit.setEditable(True)

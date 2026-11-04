@@ -9,7 +9,7 @@ The face and body pickers show the actual texture, because
 "Face_N_Tough_Bartholo" tells you nothing on its own.
 """
 
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 import gamedata
 import labels
@@ -19,9 +19,62 @@ from texture_view import FACE_CROP, TexturePanel
 
 
 def build(parent: QWidget, npc, handlers) -> None:
-    layout = parent.layout()
+    """Build the tab, and rebuild it whenever the gender changes.
+
+    Women and men are offered different head meshes, faces, skins, walks and
+    voices, so the lists cannot be fixed at build time. Switching gender swaps
+    in the other set, and any value that does not belong to it is replaced by
+    the first one that does.
+    """
+    outer = parent.layout()
+    outer.setContentsMargins(0, 0, 0, 0)
+    state = {"gender": None, "inner": None, "previews": lambda: None}
+
+    def populate():
+        if state["inner"] is not None:
+            outer.removeWidget(state["inner"])
+            state["inner"].deleteLater()
+        inner = QWidget()
+        inner.setLayout(QVBoxLayout())
+        outer.addWidget(inner)
+        state["inner"] = inner
+        state["gender"] = npc.gender
+        state["previews"] = _fill(inner.layout(), npc, handlers)
+
+    def adopt_gender():
+        """Move the NPC's visuals onto the new gender's lists."""
+        g = npc.gender
+        if npc.head not in gamedata.heads_for(g):
+            npc.head = gamedata.heads_for(g)[0]
+        if npc.face not in gamedata.faces_for(g):
+            npc.face = gamedata.faces_for(g)[0]
+        if npc.body_tex not in gamedata.body_textures_for(g):
+            npc.body_tex = gamedata.body_textures_for(g)[0]
+        # Women walk the female way unless chosen otherwise afterwards.
+        if (g == "FEMALE" and gamedata.FEMALE_WALK in gamedata.overlays_for(g)) \
+                or npc.overlay not in gamedata.overlays_for(g):
+            npc.overlay = gamedata.overlays_for(g)[0]
+        if int(npc.voice) not in gamedata.voices_for(g):
+            npc.voice = gamedata.voices_for(g)[0]
+
+    def refresh_previews():
+        if npc.gender != state["gender"]:
+            adopt_gender()
+            populate()
+            handlers.refresh()          # the script and 3D view follow
+            return
+        state["previews"]()
+
+    populate()
+    parent.refresh_previews = refresh_previews
+
+
+def _fill(layout, npc, handlers):
+    """The tab's widgets for npc.gender. Returns the function that re-syncs
+    the texture previews."""
     layout.setSpacing(0)
     layout.setContentsMargins(ui.SPACING, ui.SPACING, ui.SPACING, ui.SPACING)
+    gender = npc.gender
 
     face_values = gamedata.face_values()
     body_values = gamedata.body_texture_values()
@@ -59,30 +112,31 @@ def build(parent: QWidget, npc, handlers) -> None:
     # Only heads with a real name. The rest are internal variants nobody can
     # tell apart by their constant - but keep the NPC's own head if it is one,
     # so opening a vanilla NPC does not silently change it.
-    heads = [h for h in gamedata.heads() if h in labels.HEAD]
+    heads = [h for h in gamedata.heads_for(gender) if h in labels.HEAD]
     if npc.head and npc.head.upper() not in heads:
         heads.append(npc.head.upper())
     ui.field(layout, "Head mesh",
              ui.dropdown(labels.label_list(labels.HEAD, heads),
                          labels.pretty(labels.HEAD, npc.head), setter("head")))
 
-    faces = gamedata.faces()
+    faces = gamedata.faces_for(gender)
     ui.field(layout, "Face",
              ui.search_dropdown(faces, npc.face, setter("face")),
-             f'{len(faces)} faces, in the game\'s own order. Type to search, e.g. "Thorus".')
+             f'{len(faces)} faces, in the game\'s own order. Type to search'
+             + ('.' if gender == "FEMALE" else ', e.g. "Thorus".'))
 
     ui.field(layout, "Skin",
-             ui.dropdown(labels.label_list(labels.BODY, gamedata.body_textures()),
+             ui.dropdown(labels.label_list(labels.BODY, gamedata.body_textures_for(gender)),
                          labels.pretty(labels.BODY, npc.body_tex),
                          setter("body_tex")))
 
     ui.field(layout, "Walk style",
-             ui.dropdown(labels.label_list(labels.OVERLAY, gamedata.overlays()),
+             ui.dropdown(labels.label_list(labels.OVERLAY, gamedata.overlays_for(gender)),
                          labels.pretty(labels.OVERLAY, npc.overlay),
                          setter("overlay")))
 
     ui.field(layout, "Voice",
-             ui.dropdown([str(v) for v in gamedata.voices()], str(npc.voice),
+             ui.dropdown([str(v) for v in gamedata.voices_for(gender)], str(npc.voice),
                          lambda t: handlers.assignAttribute(
                              "voice", lambda: t, int)),
              "Which SVM speech set this character uses.")
@@ -98,6 +152,6 @@ def build(parent: QWidget, npc, handlers) -> None:
 
     layout.addStretch()
     refresh_previews()
-    # Let the page re-sync us when the model changes from elsewhere
-    # (e.g. armor picked on the Inventory tab, or a loaded NPC).
-    parent.refresh_previews = refresh_previews
+    # The page re-syncs us when the model changes from elsewhere (e.g. armor
+    # picked on the Inventory tab, or a loaded NPC).
+    return refresh_previews
