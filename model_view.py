@@ -89,6 +89,7 @@ class ModelView(QWidget):
         self._drag = None
         self._last_key = None
         self._models = None
+        self._bounds = None
 
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -127,6 +128,7 @@ class ModelView(QWidget):
 
     def zoom_by(self, factor):
         self.zoom = max(MIN_ZOOM, min(MAX_ZOOM, self.zoom * factor))
+        self._clamp_pan()
         self.render_now(scale=self._drag_scale())
         self._timer.start(140)
 
@@ -172,12 +174,31 @@ class ModelView(QWidget):
         else:
             self.pan[0] += dx
             self.pan[1] += dy
+            self._clamp_pan()
         self.render_now(scale=self._drag_scale())
 
     def end_drag(self, _event):
         self._drag = None
         self.canvas.setCursor(Qt.CursorShape.OpenHandCursor)
         self.render_now()
+
+    def _clamp_pan(self):
+        """Keep panning within the figure.
+
+        Zoomed out, the figure can slide until its edge meets the panel edge
+        but never off it; zoomed in, the panel can roam over the figure but
+        never past its edge into empty space. Both are |panel/2 - figure/2|.
+        """
+        if self._bounds is None:
+            return
+        area = self.canvas.size()
+        w, h = max(1, area.width()), max(1, area.height())
+        half_w, half_h = self._bounds
+        scale = render3d.fit_scale(half_w, half_h, w, h, zoom=self.zoom)
+        lim_x = abs(w / 2 - half_w * scale)
+        lim_y = abs(h / 2 - half_h * scale)
+        self.pan[0] = max(-lim_x, min(lim_x, self.pan[0]))
+        self.pan[1] = max(-lim_y, min(lim_y, self.pan[1]))
 
     def _drag_scale(self):
         """Shrink the drag frame to a fixed pixel budget, never enlarge it."""
@@ -186,6 +207,7 @@ class ModelView(QWidget):
         return min(1.0, (DRAG_TARGET_PIXELS / pixels) ** 0.5)
 
     def on_resize(self):
+        self._clamp_pan()
         self._resize_timer.start()
 
     # -------------------------------------------------------------- redrawing
@@ -197,6 +219,7 @@ class ModelView(QWidget):
         """The model changed while we were hidden; redraw when shown again."""
         self._last_key = None
         self._models = None
+        self._bounds = None
 
     def refresh(self):
         key = self._look_key()
@@ -204,11 +227,14 @@ class ModelView(QWidget):
             return
         self._last_key = key
         self._models = None
+        self._bounds = None
         self._timer.start()
 
     def _get_models(self):
         if self._models is None:
             self._models = render3d.character(self.npc)
+            self._bounds = render3d.bounds(self._models) if self._models else None
+            self._clamp_pan()
         return self._models
 
     def render_now(self, scale=1.0):

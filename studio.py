@@ -43,16 +43,17 @@ def _load_pages():
 
 
 class Studio(QMainWindow):
-    def __init__(self):
+    def __init__(self, npc=None):
         super().__init__()
+        theme.resolve_fonts()             # no-op after the first call
         self.setWindowTitle("Gothic Studio")
         self._size_and_centre()
         self.setStyleSheet(SS["global"])
 
-        self.npc = npc_page.build()
+        self.npc = npc_page.build(npc)
         self.dialog = dialog_page.build()
 
-        tabs = QTabWidget()
+        self.tabs = tabs = QTabWidget()
         tabs.addTab(self.npc, "NPC")
         tabs.addTab(self.dialog, "Dialog")
         self.setCentralWidget(tabs)
@@ -115,29 +116,69 @@ class Studio(QMainWindow):
         bar.addPermanentWidget(self.compile_btn)
         self.setStatusBar(bar)
 
-    def _theme_label(self):
+    @staticmethod
+    def _theme_label():
         """Names the look you would switch *to*, like a light switch."""
-        return "Light mode" if self._next_mode() == "light" else "Dark mode"
-
-    def _next_mode(self):
-        # Compare against the saved choice, not the running one, so a second
-        # click before restarting undoes the first.
-        import config
-        saved = config.get("theme", theme.MODE)
-        return "light" if saved == "dark" else "dark"
+        return "Light mode" if theme.MODE == "dark" else "Dark mode"
 
     def _toggle_theme(self):
-        mode = self._next_mode()
-        if not theme.set_mode(mode):
-            self.statusBar().showMessage("Could not save the theme setting", 8000)
-            return
-        self.theme_btn.setText(self._theme_label())
-        if mode == theme.MODE:
-            self.statusBar().showMessage(f"Staying in {mode} mode", 6000)
-        else:
-            self.statusBar().showMessage(
-                f"{mode.capitalize()} mode saved - restart Gothic Studio to apply it",
-                10000)
+        """Switch palettes now.
+
+        Every widget bakes its colours into a stylesheet when it is built, so
+        the window is rebuilt with the new palette and the work in progress -
+        the NPC, the dialog scenes, which tabs are open - is carried across.
+        """
+        mode = "light" if theme.MODE == "dark" else "dark"
+        saved = theme.set_mode(mode)
+        theme.apply(mode)
+        apply_palette(QApplication.instance())
+
+        state = self._snapshot()
+        new = Studio(npc=self.npc.npc)
+        new._restore(state)
+        new.setGeometry(self.geometry())
+        new.setWindowState(self.windowState())
+        new.show()
+        _windows.append(new)
+        self.close()
+        if self in _windows:
+            _windows.remove(self)
+        self.deleteLater()
+        new.statusBar().showMessage(
+            f"{mode.capitalize()} mode" if saved
+            else f"{mode.capitalize()} mode (could not save the setting)", 5000)
+
+    def _snapshot(self):
+        d = self.dialog
+        return {
+            "main_tab": self.tabs.currentIndex(),
+            "npc_tab": self.npc.tabs.currentIndex(),
+            "npc_side": self.npc.side.current_tab(),
+            "dlg_side": d.side.current_tab(),
+            "blocks": d._collect_blocks(),
+            "npc_name": d._npc_name(),
+            "npc_id": d._npc_id(),
+            "block": d.current_block_idx,
+            "file": d.current_file_path,
+            "touched": (d._npc_id_touched, d._npc_name_touched),
+            "status": d.side.status.text(),
+            "npc_status": self.npc.side.status.text(),
+        }
+
+    def _restore(self, s):
+        d = self.dialog
+        if s["blocks"] or s["npc_name"] or s["npc_id"]:
+            d._load_project(s["npc_name"], s["npc_id"], s["blocks"])
+            if 0 <= s["block"] < len(d.blocks):
+                d._select_block(s["block"])
+        d.current_file_path = s["file"]
+        d._npc_id_touched, d._npc_name_touched = s["touched"]
+        d.side.say(s["status"])
+        d.side.tabs.setCurrentIndex(s["dlg_side"])
+        self.npc.tabs.setCurrentIndex(max(s["npc_tab"], 0))
+        self.npc.side.tabs.setCurrentIndex(s["npc_side"])
+        self.npc.side.say(s["npc_status"])
+        self.tabs.setCurrentIndex(s["main_tab"])
 
     def _locate_gdc(self):
         if firstrun.choose_gdc(self):
@@ -242,6 +283,30 @@ def diagnose():
 
 DEV = "--dev" in sys.argv   # skip the Gothic II prompt; run without a mod
 
+#: Keeps the live window referenced; a theme switch replaces it.
+_windows = []
+
+
+def apply_palette(app):
+    """Point Qt's own palette (dialogs, menus, frame) at the current THEME."""
+    # Let the native window frame (title bar) match, where Qt can (6.8+).
+    hints = app.styleHints()
+    if hasattr(hints, "setColorScheme"):
+        hints.setColorScheme(Qt.ColorScheme.Dark if theme.MODE == "dark"
+                             else Qt.ColorScheme.Light)
+
+    pal = QPalette()
+    for role, key in (("Window", "bg_main"), ("WindowText", "text_primary"),
+                      ("Base", "bg_input"), ("AlternateBase", "bg_panel"),
+                      ("Text", "text_primary"), ("Button", "bg_bar"),
+                      ("ButtonText", "text_secondary"),
+                      ("Highlight", "accent_primary"),
+                      ("HighlightedText", "text_on_accent"),
+                      ("ToolTipBase", "bg_panel"), ("ToolTipText", "text_primary"),
+                      ("PlaceholderText", "text_muted")):
+        pal.setColor(getattr(QPalette.ColorRole, role), QColor(THEME[key]))
+    app.setPalette(pal)
+
 
 def main():
     if "--check" in sys.argv:
@@ -254,29 +319,15 @@ def main():
     if sys.platform != "darwin":
         app.setWindowIcon(QIcon(str(ICON)))
 
-    # Let the native window frame (title bar) match, where Qt can (6.8+).
-    hints = app.styleHints()
-    if hasattr(hints, "setColorScheme"):
-        hints.setColorScheme(Qt.ColorScheme.Dark if theme.MODE == "dark"
-                             else Qt.ColorScheme.Light)
-
-    pal = QPalette()
-    pal.setColor(QPalette.ColorRole.Window, QColor(THEME["bg_main"]))
-    pal.setColor(QPalette.ColorRole.WindowText, QColor(THEME["text_primary"]))
-    pal.setColor(QPalette.ColorRole.Base, QColor(THEME["bg_input"]))
-    pal.setColor(QPalette.ColorRole.AlternateBase, QColor(THEME["bg_panel"]))
-    pal.setColor(QPalette.ColorRole.Text, QColor(THEME["text_primary"]))
-    pal.setColor(QPalette.ColorRole.Button, QColor(THEME["bg_bar"]))
-    pal.setColor(QPalette.ColorRole.ButtonText, QColor(THEME["text_secondary"]))
-    pal.setColor(QPalette.ColorRole.Highlight, QColor(THEME["accent_primary"]))
-    pal.setColor(QPalette.ColorRole.HighlightedText, QColor(THEME["text_on_accent"]))
-    app.setPalette(pal)
+    theme.resolve_fonts()
+    apply_palette(app)
 
     if not DEV and not project.FOUND and not firstrun.ensure():
         return                                # asked, declined; nothing to show
 
     _load_pages()
     win = Studio()
+    _windows.append(win)
     win.show()
     sys.exit(app.exec())
 

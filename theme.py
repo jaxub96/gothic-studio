@@ -96,11 +96,26 @@ DARK = {                        # slate: blue-grey charcoal, not black
 
 PALETTES = {"light": LIGHT, "dark": DARK}
 
-# Read once at start-up: every widget bakes its stylesheet from THEME when it
-# is built, so switching takes effect on the next launch.
 MODE = config.get("theme", "light")
 if MODE not in PALETTES:
     MODE = "light"
+
+# Every widget bakes its stylesheet from THEME when it is built. Switching the
+# palette updates THEME and the shared sheet dicts in place, tells listeners
+# (ui.py rebuilds its SS), and the window is then rebuilt - see studio.py.
+_listeners = []
+
+
+def on_change(fn):
+    """Call fn() whenever THEME changes (palette switch or font resolution)."""
+    _listeners.append(fn)
+
+
+def _changed():
+    SS.clear()
+    SS.update(_build_ss())
+    for fn in _listeners:
+        fn()
 
 
 def set_mode(mode):
@@ -108,12 +123,55 @@ def set_mode(mode):
     return mode in PALETTES and config.save("theme", mode)
 
 
+def apply(mode):
+    """Switch THEME to another palette now. Widgets built after this use it."""
+    global MODE
+    if mode not in PALETTES:
+        return
+    MODE = mode
+    THEME.update(PALETTES[mode])
+    _changed()
+
+
+# The font keys list preferences, Windows fonts first. Handing Qt a family
+# that is not installed makes it build an alias table on every start (the
+# "Populating font family aliases" warning), so once a QApplication exists
+# each list is narrowed to the first family this machine really has.
+_FONT_LISTS = {
+    "font_ui":      ("Segoe UI", "Helvetica Neue", "Inter", "Noto Sans",
+                     "DejaVu Sans", "Arial"),
+    "font_code":    ("Consolas", "Cascadia Code", "Cascadia Mono", "Menlo",
+                     "SF Mono", "DejaVu Sans Mono", "Liberation Mono",
+                     "Noto Sans Mono", "Courier New"),
+}
+_fonts_resolved = False
+
+
+def resolve_fonts():
+    """Pick installed font families. Needs a QApplication; safe to call twice."""
+    global _fonts_resolved
+    if _fonts_resolved:
+        return
+    _fonts_resolved = True
+    from PyQt6.QtGui import QFontDatabase
+    have = set(QFontDatabase.families())
+    fallback = {
+        "font_ui": QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont),
+        "font_code": QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont),
+    }
+    for key, wanted in _FONT_LISTS.items():
+        THEME[key] = next((f for f in wanted if f in have), fallback[key].family())
+    THEME["font_display"] = THEME["font_code"]
+    _changed()
+
+
 THEME = {
     **PALETTES[MODE],
 
-    "font_display":     "Consolas, Cascadia Code, monospace",
-    "font_ui":          "Segoe UI, Helvetica Neue, Arial, sans-serif",
-    "font_code":        "Consolas, Cascadia Code, monospace",
+    # Narrowed to one installed family each by resolve_fonts().
+    "font_display":     "Consolas",
+    "font_ui":          "Segoe UI",
+    "font_code":        "Consolas",
     "font_size_ui":     "21px",
     "font_size_small":  "18px",
     "font_size_tiny":   "15px",
@@ -195,7 +253,7 @@ def _ss_check():
 def _ss_group():
     t = THEME
     return (
-        f"QGroupBox {{ color:{t['accent_secondary']}; font-weight:600; font-size:{t['font_size_small']}; "
+        f"QGroupBox {{ color:{t['accent_secondary']}; font-weight:500; font-size:{t['font_size_small']}; "
         f"  letter-spacing:0.3px; border:{t['border_width']} solid {t['bg_border']}; "
         f"  border-radius:{t['radius_lg']}; margin-top:10px; padding-top:6px; "
         f"  background:{t['bg_panel']}; font-family:{t['font_ui']}; }}"
@@ -209,7 +267,7 @@ def _ss_add_btn():
         f"QPushButton {{ background:{t['bg_bar']}; color:{t['text_secondary']}; "
         f"  border:{t['border_width']} solid {t['bg_border']}; "
         f"  border-radius:{t['radius_sm']}; padding:5px 12px; "
-        f"  font-size:{t['font_size_small']}; font-weight:600; }}"
+        f"  font-size:{t['font_size_small']}; font-weight:500; }}"
         f"QPushButton:hover {{ background:{t['bg_input_border']}; color:{t['text_primary']}; }}"
     )
 
@@ -261,30 +319,35 @@ def _ss_global():
             border-right: {t['border_width']} solid {t['bg_border']};
             font-family: {t['font_ui']};
             font-size: {t['font_size_small']};
-            font-weight: 600;
+            font-weight: 500;
         }}
         QTabBar::tab:hover {{ color: {t['text_primary']}; }}
         QTabBar::tab:selected {{
             background: {t['bg_panel']};
             color: {t['text_primary']};
             border-bottom: 1px solid {t['bg_panel']};
-            font-weight: 700;
+            font-weight: 600;
         }}
         QMessageBox {{ background: {t['bg_main']}; }}
     """
 
-# Build all sheets once at import time
-SS = {
-    "field":          _ss_field(),
-    "field_readonly": _ss_field_readonly(),
-    "spin":           _ss_spin(),
-    "combo":          _ss_combo(),
-    "check":          _ss_check(),
-    "group":          _ss_group(),
-    "add_btn":        _ss_add_btn(),
-    "rm_btn":         _ss_rm_btn(),
-    "global":         _ss_global(),
-}
+def _build_ss():
+    return {
+        "field":          _ss_field(),
+        "field_readonly": _ss_field_readonly(),
+        "spin":           _ss_spin(),
+        "combo":          _ss_combo(),
+        "check":          _ss_check(),
+        "group":          _ss_group(),
+        "add_btn":        _ss_add_btn(),
+        "rm_btn":         _ss_rm_btn(),
+        "global":         _ss_global(),
+    }
+
+
+# Built at import, rebuilt in place by _changed(), so `from theme import SS`
+# keeps seeing the current sheets.
+SS = _build_ss()
 
 
 # ── Syntax Highlighter ────────────────────────────────────────────────────────

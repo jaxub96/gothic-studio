@@ -29,14 +29,16 @@ Buttons
 
 import weakref
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTime, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QFrame,
                              QTabWidget,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget,
                              QPushButton, QRadioButton, QSlider, QSpinBox, QStackedWidget,
-                             QTextEdit, QTreeWidget, QVBoxLayout, QWidget)
+                             QTextEdit, QTimeEdit, QTreeWidget, QVBoxLayout,
+                             QWidget)
 
+import theme
 from theme import THEME
 
 # --- one scale for everything ------------------------------------------------
@@ -61,7 +63,7 @@ def heading(text):
     """A section title."""
     w = QLabel(text[:1].upper() + text[1:].lower() if text.isupper() else text)
     w.setStyleSheet(
-        f"color:{THEME['text_secondary']}; font-size:{FONT_LABEL}; font-weight:700; "
+        f"color:{THEME['text_secondary']}; font-size:{FONT_LABEL}; font-weight:600; "
         f"background:transparent; font-family:{THEME['font_ui']};")
     return w
 
@@ -71,7 +73,7 @@ def label(text):
     w = QLabel(text)
     w.setStyleSheet(
         f"color:{THEME['text_secondary']}; font-size:{FONT_LABEL}; "
-        f"font-weight:600; background:transparent;")
+        f"font-weight:400; background:transparent;")
     return w
 
 
@@ -92,7 +94,7 @@ def value_label(text="", width=88):
     w.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     w.setStyleSheet(
         f"color:{THEME['text_primary']}; font-size:{FONT_VALUE}; "
-        f"font-weight:700; background:transparent;")
+        f"font-weight:500; background:transparent;")
     return w
 
 
@@ -258,8 +260,30 @@ def _combo_css():
         f"  background:{THEME['bg_border_strong']}; border-radius:4px; min-height:24px; }}")
 
 
+class Dropdown(QComboBox):
+    """A QComboBox that keeps keyboard focus after you pick from its list.
+
+    Picking an item fires on_change, which redraws the previews; on some
+    platforms that leaves focus somewhere else, so the arrow keys stop
+    stepping through the choices. Taking focus back once the list has closed
+    makes click-then-arrow work everywhere.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def hidePopup(self):
+        super().hidePopup()
+        QTimer.singleShot(0, self._refocus)
+
+    def _refocus(self):
+        if self.isVisible() and self.isEnabled():
+            self.setFocus(Qt.FocusReason.PopupFocusReason)
+
+
 def dropdown(items, value=None, on_change=None):
-    w = QComboBox()
+    w = Dropdown()
     w.addItems([str(i) for i in items])
     w.setMinimumHeight(BUTTON_H)
     w.setMaxVisibleItems(POPUP_ITEMS)
@@ -316,6 +340,38 @@ def slider(lo, hi, value, on_change, fmt=str, width=88):
     holder.slider = bar
     holder.readout = out
     return holder
+
+
+def time_input(hour, minute, on_change, width=NUMBER_W):
+    """A clock time, HH:MM. on_change gets (hour, minute)."""
+    w = QTimeEdit(QTime(int(hour) % 24, int(minute) % 60))
+    w.setDisplayFormat("HH:mm")
+    w.setFixedWidth(width)
+    w.setMinimumHeight(BUTTON_H)
+    w.setButtonSymbols(QTimeEdit.ButtonSymbols.NoButtons)
+    w.setStyleSheet(
+        _input_css("QTimeEdit")
+        + "QTimeEdit::up-button, QTimeEdit::down-button "
+          "{ subcontrol-origin:border; width:0; }")
+    w.timeChanged.connect(lambda t: on_change(t.hour(), t.minute()))
+    return w
+
+
+def card():
+    """A softly framed group inside a page, e.g. one routine entry.
+
+    Returns (frame, its QVBoxLayout).
+    """
+    frame = QFrame()
+    frame.setObjectName("card")
+    frame.setStyleSheet(
+        f"QFrame#card {{ background:{THEME['bg_panel']}; "
+        f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
+        f"  border-radius:{THEME['radius_md']}; }}")
+    lay = QVBoxLayout(frame)
+    lay.setContentsMargins(PADDING, GAP + 4, PADDING, 0)
+    lay.setSpacing(0)
+    return frame, lay
 
 
 def spin(lo, hi, value, on_change, suffix="", width=110):
@@ -445,7 +501,7 @@ def _button_css(variant, height):
         f"  border:{THEME['border_width']} solid {edge}; "
         f"  border-radius:{THEME['radius_sm']}; padding:0 12px; "
         f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
-        f"  font-weight:600; min-height:{height}px; }}"
+        f"  font-weight:500; min-height:{height}px; }}"
         f"QPushButton:hover {{ background:{THEME[hover]}; "
         f"  border-color:{THEME[hover] if solid else THEME['bg_border_strong']}; "
         f"  color:{THEME[fg] if solid else THEME['text_primary']}; }}"
@@ -476,35 +532,48 @@ def _small_button_css(color_key, height=COMPACT_H):
         f"QPushButton {{ background:{THEME['bg_bar']}; color:{THEME[color_key]}; "
         f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
         f"  border-radius:{THEME['radius_sm']}; padding:0 10px; "
-        f"  font-size:{FONT_LABEL}; font-weight:600; min-height:{height}px; }}"
+        f"  font-size:{FONT_LABEL}; font-weight:500; min-height:{height}px; }}"
         f"QPushButton:hover {{ background:{THEME['bg_hover']}; "
         f"  color:{THEME['text_primary']}; }}")
 
 
-SS = {
-    "field": _input_css("QLineEdit"),
-    "field_readonly": (
-        f"QLineEdit {{ background:{THEME['bg_panel']}; color:{THEME['text_muted']}; "
-        f"  border:{THEME['border_width']} solid {THEME['bg_input_border']}; "
-        f"  border-radius:{THEME['radius_sm']}; padding:5px 8px; "
-        f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
-        f"  font-style:italic; }}"),
-    "combo": _combo_css(),
-    "spin": _input_css("QSpinBox"),
-    "check": (
-        f"QCheckBox {{ color:{THEME['text_secondary']}; font-size:{FONT_LABEL}; "
-        f"  spacing:4px; background:transparent; }}"
-        f"QCheckBox::indicator {{ width:14px; height:14px; "
-        f"  border:{THEME['border_width']} solid {THEME['bg_border_strong']}; "
-        f"  border-radius:3px; background:{THEME['bg_input']}; }}"
-        f"QCheckBox::indicator:checked {{ background:{THEME['accent_primary']}; "
-        f"  border-color:{THEME['accent_primary']}; }}"),
-    "add_btn": _small_button_css("accent_primary"),
-    "rm_btn": (
-        f"QPushButton {{ background:transparent; color:{THEME['text_muted']}; "
-        f"  border:none; font-size:{FONT_LABEL}; }}"
-        f"QPushButton:hover {{ color:{THEME['accent_primary']}; }}"),
-}
+def _build_ss():
+    return {
+        "field": _input_css("QLineEdit"),
+        "field_readonly": (
+            f"QLineEdit {{ background:{THEME['bg_panel']}; color:{THEME['text_muted']}; "
+            f"  border:{THEME['border_width']} solid {THEME['bg_input_border']}; "
+            f"  border-radius:{THEME['radius_sm']}; padding:5px 8px; "
+            f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
+            f"  font-style:italic; }}"),
+        "combo": _combo_css(),
+        "spin": _input_css("QSpinBox"),
+        "check": (
+            f"QCheckBox {{ color:{THEME['text_secondary']}; font-size:{FONT_LABEL}; "
+            f"  spacing:4px; background:transparent; }}"
+            f"QCheckBox::indicator {{ width:14px; height:14px; "
+            f"  border:{THEME['border_width']} solid {THEME['bg_border_strong']}; "
+            f"  border-radius:3px; background:{THEME['bg_input']}; }}"
+            f"QCheckBox::indicator:checked {{ background:{THEME['accent_primary']}; "
+            f"  border-color:{THEME['accent_primary']}; }}"),
+        "add_btn": _small_button_css("accent_primary"),
+        "rm_btn": (
+            f"QPushButton {{ background:transparent; color:{THEME['text_muted']}; "
+            f"  border:none; font-size:{FONT_LABEL}; }}"
+            f"QPushButton:hover {{ color:{THEME['accent_primary']}; }}"),
+    }
+
+
+# Rebuilt in place when the theme changes, so `from ui import SS` stays live.
+SS = _build_ss()
+
+
+def _rebuild_ss():
+    SS.clear()
+    SS.update(_build_ss())
+
+
+theme.on_change(_rebuild_ss)
 
 
 def placeholder(text):
@@ -555,7 +624,7 @@ class SideTabs(QWidget):
             f"  border-right:{THEME['border_width']} solid {THEME['bg_border']}; "
             f"  outline:none; padding:10px 8px; "
             f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
-            f"  font-weight:600; }}"
+            f"  font-weight:500; }}"
             f"QListWidget::item {{ padding:8px 10px; margin-bottom:2px; "
             f"  color:{THEME['text_muted']}; border-radius:{THEME['radius_sm']}; }}"
             f"QListWidget::item:hover {{ color:{THEME['text_primary']}; "

@@ -49,8 +49,14 @@ The saved folder lives in `%APPDATA%\GothicStudio\config.json` on Windows,
 `~/.config/GothicStudio/config.json` elsewhere. Delete it to be asked again.
 
 **Dark mode:** click **Dark mode** (or **Light mode**) in the status bar. The
-choice is saved in the same `config.json` (`"theme": "dark"`) and applies the
-next time Gothic Studio starts.
+window switches at once and keeps whatever you have open; the choice is saved in
+the same `config.json` (`"theme": "dark"`) for next time.
+
+**Routines:** the Routine tab holds a list of routines, each a time range
+(HH:MM to HH:MM) with its own activity and waypoint, written as one `TA_` line
+each. **+ Add routine** fills the first free time, or splits the last routine
+when the day is full. The line under the list (and **Validate**) points out
+gaps, where the NPC would have nothing to do, and overlaps.
 
 The status bar always shows the path actually in use.
 

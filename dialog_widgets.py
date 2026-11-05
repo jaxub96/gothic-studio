@@ -23,6 +23,7 @@ from PyQt6.QtCore import Qt, QTimer, QMimeData
 from PyQt6.QtGui import QDrag
 
 from theme import THEME
+import ui
 from ui import SS
 from dialog_gen import (
     DialogLine,
@@ -205,7 +206,7 @@ class ChatBubble(QFrame, _DropTargetMixin):
 
         tag = QLabel(speaker_display_name(line.speaker))
         tag.setStyleSheet(
-            f"color:{fg}; background:transparent; font-weight:700; "
+            f"color:{fg}; background:transparent; font-weight:600; "
             f"font-size:{THEME['font_size_tiny']}; letter-spacing:1px;"
         )
 
@@ -335,7 +336,7 @@ class EffectInsertRow(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(6)
 
-        self.kind_cmb = QComboBox()
+        self.kind_cmb = ui.Dropdown()
         self.kind_cmb.addItems(
             ["Give Item", "Take Item", "Give XP", "Change Routine", "Follow", "Stop Following", "Log Entry"]
         )
@@ -363,7 +364,7 @@ class EffectInsertRow(QWidget):
         self.topic_edit = QLineEdit()
         self.topic_edit.setPlaceholderText("Log topic  e.g. CH1_JoinPsi")
         self.topic_edit.setStyleSheet(SS["field"])
-        self.status_cmb = QComboBox()
+        self.status_cmb = ui.Dropdown()
         self.status_cmb.addItems(
             ["LOG_RUNNING", "LOG_SUCCESS", "LOG_FAILED", "LOG_NOTE"]
         )
@@ -522,7 +523,7 @@ class ChatLinesWidget(QWidget):
         color = THEME["accent_primary"] if is_hero else THEME["accent_secondary"]
         self.speaker_btn.setStyleSheet(
             f"QPushButton {{ background:{color}; color:{THEME['text_on_accent']}; border:none; "
-            f"border-radius:{THEME['radius_md']}; font-weight:700; padding:7px 0; }}"
+            f"border-radius:{THEME['radius_md']}; font-weight:600; padding:7px 0; }}"
             f"QPushButton:hover {{ background:{THEME['accent_hover']}; }}"
         )
 
@@ -682,14 +683,14 @@ class BlockEditor(QWidget):
             w = QLabel(text)
             w.setFixedWidth(width)
             w.setStyleSheet(
-                f"color:{THEME['text_secondary']}; font-weight:600; font-size:{THEME['font_size_small']};"
+                f"color:{THEME['text_secondary']}; font-weight:400; font-size:{THEME['font_size_small']};"
             )
             return w
 
         if self.is_followup:
             hint = QLabel("↳  Follow-up scene, shown after a choice is picked")
             hint.setStyleSheet(
-                f"color:{THEME['accent_secondary']}; font-weight:600; "
+                f"color:{THEME['accent_secondary']}; font-weight:500; "
                 f"font-size:{THEME['font_size_small']}; padding-bottom:2px;"
             )
             root.addWidget(hint)
@@ -943,7 +944,7 @@ class BlockListItem(QFrame):
                 f"border-radius:0; margin:0px; }}"
             )
             self.lbl.setStyleSheet(
-                f"color:{THEME['accent_hover']}; font-weight:700; font-size:{THEME['font_size_ui']};"
+                f"color:{THEME['accent_hover']}; font-weight:600; font-size:{THEME['font_size_ui']};"
             )
         else:
             self.setStyleSheet(

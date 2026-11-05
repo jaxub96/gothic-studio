@@ -293,20 +293,32 @@ def main():
     win.npc.refresh()
 
     # ---------------------------------------------------------- routines
-    print("\nday/night routine:")
-    npc.split_routine = False
+    print("\nroutines:")
+    from npc_model import new_routine
+    saved_routines = [dict(r) for r in npc.routines]
+    npc.routines = [new_routine("TA_Stand_WP", (8, 0), (8, 0))]
     one = npc_gen.routine_lines(npc)
-    npc.split_routine = True
-    npc.routine = "TA_Smith_Anvil"
-    npc.night_routine = "TA_Sleep"
-    npc.night_waypoint = "WP_INTRO_FALL3"
-    two = npc_gen.routine_lines(npc)
-    check(len(one) == 1 and len(two) == 2,
-          "one shift by default, two when a night routine is set")
-    check("TA_Smith_Anvil" in two[0] and "TA_Sleep" in two[1],
-          "day and night routines are emitted separately")
-    npc.split_routine = False
-    npc.routine = "TA_Stand_WP"
+    check(len(one) == 1 and npc_gen.routine_coverage(npc.routines) == ([], []),
+          "one all-day routine by default, covering the whole day")
+    npc.routines = [new_routine("TA_Smith_Anvil", (8, 0), (20, 30), "WP_A"),
+                    new_routine("TA_Sit_Bench", (20, 30), (23, 0)),
+                    new_routine("TA_Sleep", (23, 0), (8, 0), "WP_INTRO_FALL3")]
+    three = npc_gen.routine_lines(npc)
+    check(len(three) == 3 and "TA_Smith_Anvil\t(08,00,20,30,\"WP_A\")" in three[0]
+          and '"WP_A"' in three[1] and "TA_Sleep" in three[2],
+          "every routine is emitted with its minutes; a blank waypoint uses routine 1's")
+    check(npc_gen.routine_coverage(npc.routines) == ([], []),
+          "three routines that wrap midnight cover the day without overlap")
+    npc.routines[1]["end"] = [22, 0]
+    gaps, _ = npc_gen.routine_coverage(npc.routines)
+    check(gaps == [(22 * 60, 23 * 60)], "a gap between routines is found")
+    npc.routines[1]["end"] = [23, 0]
+    parsed = npc_gen.parse_npc(npc_gen.build_npc(npc))
+    check(parsed is not None and [r["activity"] for r in parsed.routines]
+          == ["TA_Smith_Anvil", "TA_Sit_Bench", "TA_Sleep"]
+          and parsed.routines[0]["end"] == [20, 30],
+          "routines read back from a saved file")
+    npc.routines = saved_routines
 
     # ---------------------------------------------------------- Dialog page
     print("\ndialog generation:")
