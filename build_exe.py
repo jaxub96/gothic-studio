@@ -22,6 +22,7 @@ PyInstaller cannot cross-compile. A macOS build has to be produced on a Mac -
 see BUILDING-MACOS.md. Build artefacts land in build/ and can be deleted.
 """
 
+import os
 import platform
 import shutil
 import subprocess
@@ -31,6 +32,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 DIST = HERE / "dist"
 BUILD = HERE / "build"
+ASSETS = HERE / "assets"
 
 NAME = "GothicStudio"
 BUNDLE_ID = "org.gothicstudio.app"
@@ -109,11 +111,16 @@ def main():
         "--hidden-import", "npc_tabs.visual_tab",
         "--hidden-import", "npc_tabs.inventory_tab",
         "--paths", str(HERE),
+        # the PNG is what the running app shows in its title bar and taskbar
+        "--add-data", f"{ASSETS / 'icon.png'}{os.pathsep}assets",
     ]
+    if WINDOWS:
+        args += ["--icon", str(ASSETS / "icon.ico")]
     if MACOS:
         # Without an identifier macOS treats every rebuild as a different app
         # and re-asks for any permission the user has already granted.
-        args += ["--osx-bundle-identifier", BUNDLE_ID]
+        args += ["--osx-bundle-identifier", BUNDLE_ID,
+                 "--icon", str(ASSETS / "icon.icns")]
     for module in EXCLUDE:
         args += ["--exclude-module", module]
     args.append(str(HERE / "studio.py"))

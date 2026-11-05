@@ -15,7 +15,7 @@ from pathlib import Path
 if "--dev" in sys.argv:       # must be set before project is imported
     os.environ.setdefault("GOTHIC_STUDIO_DEV", "1")
 
-from PyQt6.QtGui import QColor, QPalette
+from PyQt6.QtGui import QColor, QIcon, QPalette
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QMessageBox, QStatusBar,
                              QTabWidget)
 
@@ -28,6 +28,10 @@ from theme import SS, THEME
 # pull in gamedata and textures, which read project.SCRIPTS at import time, and
 # on a fresh machine that folder is not known until firstrun has asked for it.
 dialog_page = npc_page = None
+
+# PyInstaller unpacks bundled data under sys._MEIPASS; from source it sits here.
+ICON = (Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+        / "assets" / "icon.png")
 
 
 def _load_pages():
@@ -213,6 +217,10 @@ def main():
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    # On macOS this would replace the Dock icon with the bare G; the bundle's
+    # .icns already has the right one there.
+    if sys.platform != "darwin":
+        app.setWindowIcon(QIcon(str(ICON)))
 
     pal = QPalette()
     pal.setColor(QPalette.ColorRole.Window, QColor(THEME["bg_main"]))
