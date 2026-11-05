@@ -15,16 +15,18 @@ from pathlib import Path
 if "--dev" in sys.argv:       # must be set before project is imported
     os.environ.setdefault("GOTHIC_STUDIO_DEV", "1")
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QIcon, QPalette
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QMessageBox, QStatusBar,
+from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtGui import QColor, QIcon, QKeySequence, QPalette, QShortcut
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QMessageBox, QStatusBar, QToolButton,
                              QTabWidget)
 
+import config
 import firstrun
 import project
 import theme
 import ui
 from theme import SS, THEME
+from version import VERSION
 
 # dialog_page and npc_page are imported by _load_pages() instead of here. They
 # pull in gamedata and textures, which read project.SCRIPTS at import time, and
@@ -46,7 +48,7 @@ class Studio(QMainWindow):
     def __init__(self, npc=None):
         super().__init__()
         theme.resolve_fonts()             # no-op after the first call
-        self.setWindowTitle("Gothic Studio")
+        self.setWindowTitle(f"Gothic Studio {VERSION}")
         self._size_and_centre()
         self.setStyleSheet(SS["global"])
 
@@ -57,11 +59,16 @@ class Studio(QMainWindow):
         tabs.addTab(self.npc, "NPC")
         tabs.addTab(self.dialog, "Dialog")
         self.setCentralWidget(tabs)
+        self._side_toggle(tabs)
+        # Picks up NPC files that changed outside the app, so no Reload button.
+        tabs.currentChanged.connect(
+            lambda i: self.dialog.refresh_npc_ids() if i == 1 else None)
         # The NPC page's side list sits right under the NPC / Dialog tabs; size
         # it to the tab bar so its right rule continues the Dialog tab's edge.
         # Tab widths come from font metrics, so a constant would drift.
         tabs.tabBar().ensurePolished()
         self.npc.tabs.set_list_width(tabs.tabBar().sizeHint().width())
+        self.dialog.set_scene_width(tabs.tabBar().sizeHint().width())
 
         # The one connection that makes this a single app rather than two.
         self.npc.instance_changed.connect(self.dialog.set_npc_id)
@@ -71,12 +78,46 @@ class Studio(QMainWindow):
 
         self._status_bar()
 
+    def closeEvent(self, event):
+        # Unsaved dialog scenes exist only in this window; ask before they go.
+        if self.dialog.confirm_close():
+            event.accept()
+        else:
+            event.ignore()
+
+    def _side_toggle(self, tabs):
+        """A button at the right end of the tab row that hides the script panel on
+        both tabs, giving the editor the whole width. Remembered between runs."""
+        self.side_btn = QToolButton()
+        self.side_btn.setCheckable(True)
+        self.side_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.side_btn.setIconSize(QSize(18, 18))
+        self.side_btn.setAutoRaise(True)
+        self.side_btn.setStyleSheet(
+            f"QToolButton {{ border:none; border-radius:{THEME['radius_sm']}; "
+            f"  padding:4px 8px; margin:3px 8px; }}"
+            f"QToolButton:hover {{ background:{THEME['bg_hover']}; }}")
+        self.side_btn.toggled.connect(self._show_side_panels)
+        tabs.setCornerWidget(self.side_btn, Qt.Corner.TopRightCorner)
+        self.side_btn.setChecked(bool(config.get("side_panel", True)))
+        self._show_side_panels(self.side_btn.isChecked())   # also when unchanged
+        QShortcut(QKeySequence("Ctrl+\\"), self,
+                  lambda: self.side_btn.setChecked(not self.side_btn.isChecked()))
+
+    def _show_side_panels(self, shown):
+        for page in (self.npc, self.dialog):
+            page.side.setVisible(shown)
+        self.side_btn.setIcon(ui.side_panel_icon(shown))
+        self.side_btn.setToolTip(
+            "Hide the script panel  (Ctrl+\\)" if shown else "Show the script panel  (Ctrl+\\)")
+        config.save("side_panel", bool(shown))
+
     def _size_and_centre(self):
-        """Open at a modest size (never bigger than 90% of the screen), centred."""
+        """Open at a modest size (never more than 75% of the screen), centred."""
         want_w, want_h = THEME["window_size"]
         area = self.screen().availableGeometry()
-        self.resize(min(want_w, int(area.width() * 0.9)),
-                    min(want_h, int(area.height() * 0.9)))
+        self.resize(min(want_w, int(area.width() * 0.75)),
+                    min(want_h, int(area.height() * 0.75)))
         frame = self.frameGeometry()
         frame.moveCenter(area.center())
         self.move(frame.topLeft())
@@ -311,6 +352,14 @@ def apply_palette(app):
 def main():
     if "--check" in sys.argv:
         return diagnose()
+
+    # PyQt aborts the whole process when an exception escapes a Qt event handler
+    # (that is how a stray error in a wheel event once killed the app and any
+    # unsaved work). Report it on stderr and carry on instead.
+    def _report(kind, value, tb):
+        import traceback
+        sys.stderr.write("".join(traceback.format_exception(kind, value, tb)))
+    sys.excepthook = _report
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")

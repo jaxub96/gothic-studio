@@ -33,9 +33,21 @@ def _scan(globpat, pattern):
 # Returns {instance_id: display_name}. Items whose name is a constant rather
 # than a literal fall back to showing their id.
 
+# Script libraries that live under Content/MOD in a mod that uses Ikarus / LeGo.
+# They carry demo instances (Ikarus's _01_MultiTestBuch book, say) that the build
+# check compiles from stubs, so an NPC given one fails to compile. Never offer them.
+_LIBRARY_DIRS = {"ikarus", "lego", "ikarus_scripts", "lego_scripts", "basic_scripts"}
+
+
+def _is_library(path):
+    return any(part.lower() in _LIBRARY_DIRS for part in path.parts)
+
+
 def _item_files():
-    """Vanilla's Items/ plus the mod package's Mod/ (see mod/README.md)."""
-    return sorted(iglob(CONTENT / "Items", "**/*.d")) + sorted(iglob(CONTENT / "Mod", "**/*.d"))
+    """Vanilla's Items/ plus the mod package's Mod/ (see mod/README.md), minus the
+    bundled script libraries."""
+    mod = [f for f in iglob(CONTENT / "Mod", "**/*.d") if not _is_library(f)]
+    return sorted(iglob(CONTENT / "Items", "**/*.d")) + sorted(mod)
 
 
 @lru_cache

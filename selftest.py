@@ -354,7 +354,9 @@ def main():
         taken = None                       # any NPC the mod already gives an EXIT
         for f in project.iglob(project.DIA_DIR, "DIA*.d"):
             m = re.search(r"\bINSTANCE\s+DIA_(\w+)_EXIT\b", project.read_script(f), re.I)
-            if m:
+            # Only another file's EXIT counts: the NPC's own DIA_<id>.d is the file
+            # Save rewrites, so its EXIT is written back rather than suppressed.
+            if m and f.name.upper() != f"DIA_{m.group(1)}.D".upper():
                 taken = m.group(1).upper()
                 break
         if taken:

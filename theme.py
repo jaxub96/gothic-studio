@@ -175,9 +175,12 @@ THEME = {
     "font_size_ui":     "21px",
     "font_size_small":  "18px",
     "font_size_tiny":   "15px",
+    "font_size_button": "16px",
+    "font_size_chat":   "16px",   # bubble text and the line input
+    "font_size_scene":  "15px",   # scene list rows
     "font_size_title":  "22px",
     "font_size_placeholder": "21px",
-    "font_size_code":   10,          # pt, used for QFont object
+    "font_size_code":   9,           # pt, used for QFont object
 
     # ── Geometry ──────────────────────────────────────────────────────────────
     "radius_sm":        "4px",
@@ -187,7 +190,7 @@ THEME = {
     "topbar_height":    56,
     "sidebar_width":    212,
     "splitter_sizes":   [212, 620, 500],
-    "window_size":      (1240, 780),
+    "window_size":      (1040, 660),
 
     # ── Spacing ───────────────────────────────────────────────────────────────
     "label_col_width":  "44px",

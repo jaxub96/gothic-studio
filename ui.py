@@ -30,12 +30,12 @@ Buttons
 import weakref
 
 from PyQt6.QtCore import Qt, QTime, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QFrame,
                              QTabWidget,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget,
                              QPushButton, QRadioButton, QScrollArea, QSlider,
-                             QSpinBox, QStackedWidget,
+                             QSpinBox, QSplitter, QStackedWidget,
                              QTextEdit, QTimeEdit, QTreeWidget, QVBoxLayout,
                              QWidget)
 
@@ -47,13 +47,14 @@ GAP = 8                 # between related controls
 SPACING = 16            # between fields
 SECTION_SPACING = 22    # between sections
 PADDING = 16            # inside a panel
-BUTTON_H = 42           # every normal button
-COMPACT_H = 32          # toolbar buttons
+BUTTON_H = 38           # every normal button
+COMPACT_H = 28          # toolbar buttons
 LABEL_W = 224           # label column - fits the longest label at this size
 NUMBER_W = 128          # numeric entry fields
 POPUP_ITEMS = 12        # rows a dropdown shows before it scrolls
 
 FONT_LABEL = THEME["font_size_small"]
+FONT_BUTTON = THEME["font_size_button"]   # buttons only; labels keep FONT_LABEL
 FONT_HINT = THEME["font_size_tiny"]
 FONT_VALUE = THEME["font_size_small"]
 
@@ -506,8 +507,8 @@ def _button_css(variant, height):
     return (
         f"QPushButton {{ background:{THEME[bg]}; color:{THEME[fg]}; "
         f"  border:{THEME['border_width']} solid {edge}; "
-        f"  border-radius:{THEME['radius_sm']}; padding:0 12px; "
-        f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
+        f"  border-radius:{THEME['radius_sm']}; padding:0 10px; "
+        f"  font-family:{THEME['font_ui']}; font-size:{FONT_BUTTON}; "
         f"  font-weight:400; min-height:{height}px; }}"
         f"QPushButton:hover {{ background:{THEME[hover]}; "
         f"  border-color:{THEME[hover] if solid else THEME['bg_border_strong']}; "
@@ -539,7 +540,7 @@ def _small_button_css(color_key, height=COMPACT_H):
         f"QPushButton {{ background:{THEME['bg_bar']}; color:{THEME[color_key]}; "
         f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
         f"  border-radius:{THEME['radius_sm']}; padding:0 10px; "
-        f"  font-size:{FONT_LABEL}; font-weight:400; min-height:{height}px; }}"
+        f"  font-size:{FONT_BUTTON}; font-weight:400; min-height:{height}px; }}"
         f"QPushButton:hover {{ background:{THEME['bg_hover']}; "
         f"  color:{THEME['text_primary']}; }}")
 
@@ -613,9 +614,9 @@ class _PageScroll(QScrollArea):
     nothing is clipped at the right edge; height is what is free to scroll."""
 
     def _width(self):
-        page_ = self.widget()
-        bar = self.verticalScrollBar().sizeHint().width()
-        return (page_.minimumSizeHint().width() if page_ else 0) + bar
+        # Asking for the page's full width made the whole window unshrinkable;
+        # a narrow window scrolls the page sideways instead.
+        return 320
 
     def minimumSizeHint(self):
         hint = super().minimumSizeHint()
@@ -650,9 +651,9 @@ class SideTabs(QWidget):
             f"QListWidget {{ background:{THEME['bg_panel']}; border:none; "
             f"  border-right:{THEME['border_width']} solid {THEME['bg_border']}; "
             f"  outline:none; padding:10px 8px; "
-            f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
+            f"  font-family:{THEME['font_ui']}; font-size:{THEME['font_size_scene']}; "
             f"  font-weight:400; }}"
-            f"QListWidget::item {{ padding:8px 10px; margin-bottom:2px; "
+            f"QListWidget::item {{ padding:7px 10px; margin-bottom:2px; "
             f"  color:{THEME['text_muted']}; border-radius:{THEME['radius_sm']}; }}"
             f"QListWidget::item:hover {{ color:{THEME['text_primary']}; "
             f"  background:{THEME['bg_hover']}; }}"
@@ -688,7 +689,7 @@ class SideTabs(QWidget):
         scroll = _PageScroll()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setStyleSheet("QScrollArea { border:none; background:transparent; }")
         scroll.setWidget(widget)
         self._list.addItem(title)
@@ -738,19 +739,26 @@ class SidePanel(QWidget):
         col.addWidget(rule)
 
         self.status = hint("")
+        # A long path in the status line must not set the panel's minimum width.
+        self.status.setWordWrap(True)
+        self.status.setMinimumWidth(0)
         col.addWidget(self.status)
 
+        # Two rows so the panel can be narrow: the secondary actions on top, the
+        # one that writes into the mod across the full width below.
         actions = row()
         actions.addWidget(button("Validate", on_validate, DEFAULT,
-                                 "Check every identifier against Content/"))
+                                 "Check every identifier against Content/", compact=True))
         actions.addWidget(button("Save as...", on_save_as, DEFAULT,
-                                 "Save somewhere other than the mod"))
+                                 "Save somewhere other than the mod", compact=True))
         if on_open:
             actions.addWidget(button("Open...", on_open, DEFAULT,
-                                     "Load a saved .d file back into the editor"))
+                                     "Load a saved .d file back into the editor",
+                                     compact=True))
         actions.addStretch()
-        actions.addWidget(button("Save to mod", on_save, PRIMARY, save_tip))
         col.addLayout(actions)
+        self.save_btn = button("Save to mod", on_save, PRIMARY, save_tip)
+        col.addWidget(self.save_btn)
 
     def add_tab(self, widget, title):
         self.tabs.addTab(widget, title)
@@ -763,14 +771,29 @@ class SidePanel(QWidget):
         self.status.setText(text)
 
 
-def page(work_area, side_panel, work_stretch=3, side_stretch=2, left=PADDING):
-    """A whole page: what you edit on the left, what you get on the right."""
+def page(work_area, side_panel, work_stretch=7, side_stretch=3, left=PADDING):
+    """A whole page: what you edit on the left, what you get on the right.
+
+    The two halves sit in a splitter, so the script panel can be dragged wider
+    or narrower.
+    """
     holder = QWidget()
     lay = QHBoxLayout(holder)
     lay.setContentsMargins(left, 0, PADDING, PADDING)
-    lay.setSpacing(PADDING)
-    lay.addWidget(work_area, work_stretch)
-    lay.addWidget(side_panel, side_stretch)
+    split = QSplitter(Qt.Orientation.Horizontal)
+    split.setHandleWidth(PADDING)
+    split.setChildrenCollapsible(False)
+    split.addWidget(work_area)
+    split.addWidget(side_panel)
+    split.setStretchFactor(0, work_stretch)
+    split.setStretchFactor(1, side_stretch)
+    # Never let a drag squeeze a panel below what its own buttons need.
+    work_area.setMinimumWidth(max(work_area.minimumSizeHint().width(), 360))
+    side_panel.setMinimumWidth(max(side_panel.minimumSizeHint().width(), 300))
+    total = work_stretch + side_stretch
+    split.setSizes([1000 * work_stretch // total, 1000 * side_stretch // total])
+    lay.addWidget(split)
+    holder.splitter = split
     return holder
 
 
@@ -788,6 +811,33 @@ def report_omissions(parent, title, notes, limit=25):
         f"and will not be written back:{chr(10)}{chr(10)}{shown}{more}")
 
 
+def side_panel_icon(panel_shown, size=18):
+    """The 'show / hide the right panel' glyph: a window outline with a divider
+    near the right edge, the right pane filled while the panel is shown."""
+    from PyQt6.QtCore import QRectF
+    ratio = 2
+    pm = QPixmap(size * ratio, size * ratio)
+    pm.setDevicePixelRatio(ratio)
+    pm.fill(Qt.GlobalColor.transparent)
+    color = QColor(THEME["text_secondary"])
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(color, 1.4))
+    box = QRectF(1.5, 3, size - 3, size - 6)
+    p.drawRoundedRect(box, 3, 3)
+    split_x = box.right() - box.width() * 0.36
+    p.drawLine(int(split_x), int(box.top()), int(split_x), int(box.bottom()))
+    if panel_shown:
+        fill = QColor(color)
+        fill.setAlpha(110)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(fill)
+        p.drawRoundedRect(QRectF(split_x + 1, box.top() + 1.5,
+                                 box.right() - split_x - 2.5, box.height() - 3), 1.5, 1.5)
+    p.end()
+    return QIcon(pm)
+
+
 def code_view_css(size=None):
     """The read-only script preview."""
     size = size or THEME["font_size_code"]
@@ -803,8 +853,8 @@ class CodeView(QTextEdit):
 
     Every panel shares one text size, so zooming the NPC script also zooms the
     dialog script - you set the size you can read once. The size lives in the
-    stylesheet (which beats setFont), so QTextEdit's own zoomIn has no effect
-    and zooming re-applies the stylesheet instead.
+    stylesheet (which beats setFont), so zooming re-applies the stylesheet - on
+    the next event-loop turn, never from inside the wheel event itself.
     """
     MIN_SIZE, MAX_SIZE = 6, 36
     _size = THEME["font_size_code"]
@@ -818,6 +868,9 @@ class CodeView(QTextEdit):
         if font is not None:
             self.setFont(font)
         CodeView._views.add(self)
+        self._apply_size()
+
+    def _apply_size(self):
         self.setStyleSheet(code_view_css(CodeView._size))
 
     @classmethod
@@ -827,13 +880,20 @@ class CodeView(QTextEdit):
             return
         cls._size = size
         for view in list(cls._views):
-            view.setStyleSheet(code_view_css(size))
+            try:
+                view._apply_size()
+            except Exception:
+                # The widget was deleted on the Qt side (e.g. the NPC tabs were
+                # rebuilt). An exception escaping a Qt event handler kills the app.
+                cls._views.discard(view)
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             step = event.angleDelta().y()
             if step:
-                CodeView.set_size(CodeView._size + (1 if step > 0 else -1))
+                # Next event-loop turn, not inside this wheel event.
+                delta = 1 if step > 0 else -1
+                QTimer.singleShot(0, lambda: CodeView.set_size(CodeView._size + delta))
             event.accept()
             return
         super().wheelEvent(event)

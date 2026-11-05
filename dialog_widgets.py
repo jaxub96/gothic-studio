@@ -207,14 +207,14 @@ class ChatBubble(QFrame, _DropTargetMixin):
         tag = QLabel(speaker_display_name(line.speaker))
         tag.setStyleSheet(
             f"color:{fg}; background:transparent; font-weight:600; "
-            f"font-size:{THEME['font_size_tiny']}; letter-spacing:1px;"
+            f"font-size:12px; letter-spacing:1px;"
         )
 
         self.text_lbl = QLabel(line.text)
         self.text_lbl.setWordWrap(True)
         self.text_lbl.setStyleSheet(
             f"color:{fg}; background:transparent; font-family:{THEME['font_ui']}; "
-            f"font-size:{THEME['font_size_ui']};"
+            f"font-size:{THEME['font_size_chat']};"
         )
         self.text_lbl.setMaximumWidth(440)
         self.text_lbl.setCursor(Qt.CursorShape.IBeamCursor)
@@ -225,7 +225,7 @@ class ChatBubble(QFrame, _DropTargetMixin):
         self.text_edit.setStyleSheet(
             f"QLineEdit {{ background:{THEME['bg_input']}; color:{THEME['text_primary']}; "
             f"border:{THEME['border_width']} solid {THEME['accent_primary']}; "
-            f"border-radius:{THEME['radius_sm']}; padding:4px 6px; font-size:{THEME['font_size_ui']}; }}"
+            f"border-radius:{THEME['radius_sm']}; padding:4px 6px; font-size:{THEME['font_size_chat']}; }}"
         )
         self.text_edit.setMaximumWidth(440)
         self.text_edit.hide()
@@ -487,7 +487,7 @@ class ChatLinesWidget(QWidget):
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll.setMinimumHeight(220)
         self.scroll.setStyleSheet(
-            f"QScrollArea {{ border:none; "
+            f"QScrollArea {{ border:{THEME['border_width']} solid {THEME['bg_input_border']}; "
             f"border-radius:{THEME['radius_md']}; background:{THEME['bg_main']}; }}"
         )
         root.addWidget(self.scroll, 1)
@@ -718,11 +718,10 @@ class BlockEditor(QWidget):
         # Chat and choices live in a vertical splitter so either panel can be
         # dragged bigger or smaller to suit the scene being edited.
         dialog_splitter = QSplitter(Qt.Orientation.Vertical)
-        dialog_splitter.setHandleWidth(7)
+        dialog_splitter.setHandleWidth(8)   # a quiet gap, not a draggable bar
         dialog_splitter.setChildrenCollapsible(False)
         dialog_splitter.setStyleSheet(
             f"QSplitter::handle {{ background:{THEME['bg_main']}; }}"
-            f"QSplitter::handle:hover {{ background:{THEME['accent_primary']}; }}"
         )
 
         self.chat = ChatLinesWidget(on_change=self._emit)
@@ -760,6 +759,7 @@ class BlockEditor(QWidget):
         dialog_splitter.setStretchFactor(0, 3)
         dialog_splitter.setStretchFactor(1, 1)
         dialog_splitter.setSizes([420, 190])
+        dialog_splitter.handle(1).setEnabled(False)     # fixed split: nothing to drag
 
         dt.addWidget(dialog_splitter, 1)
 
@@ -923,7 +923,7 @@ class BlockListItem(QFrame):
         self._active = False
         self.is_followup = is_followup
         self.depth = depth
-        self.setFixedHeight(34)
+        self.setFixedHeight(32)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         lay = QHBoxLayout(self)
         left_margin = 18 + (self.depth * 16) if self.is_followup else 10 + (self.depth * 10)
@@ -938,21 +938,22 @@ class BlockListItem(QFrame):
         self._update_style()
 
     def _update_style(self):
+        # Same states as the NPC tab's list: quiet text, a hover tint, and an
+        # accent tint for the row you are on.
         if self._active:
-            self.setStyleSheet(
-                f"QFrame {{ background:{THEME['bg_bar']}; border:none; "
-                f"border-radius:0; margin:0px; }}"
-            )
-            self.lbl.setStyleSheet(
-                f"color:{THEME['accent_hover']}; font-weight:600; font-size:{THEME['font_size_ui']};"
-            )
+            bg, color, weight = THEME["accent_soft"], THEME["text_primary"], 600
         else:
-            self.setStyleSheet(
-                f"QFrame {{ background:{THEME['bg_panel']}; border:none; "
-                f"border-radius:0; margin:0px; }}"
-            )
-            color = THEME["text_muted"] if self.is_followup else THEME["text_secondary"]
-            self.lbl.setStyleSheet(f"color:{color}; font-size:{THEME['font_size_ui']};")
+            bg = "transparent"
+            color = THEME["text_muted"]
+            weight = 400
+        self.setStyleSheet(
+            f"BlockListItem {{ background:{bg}; border:none; "
+            f"border-radius:{THEME['radius_sm']}; }}"
+            f"BlockListItem:hover {{ background:"
+            f"{THEME['accent_soft'] if self._active else THEME['bg_hover']}; }}")
+        self.lbl.setStyleSheet(
+            f"color:{color}; font-weight:{weight}; background:transparent; "
+            f"font-size:{THEME['font_size_scene']};")
 
     def set_active(self, v):
         self._active = v
