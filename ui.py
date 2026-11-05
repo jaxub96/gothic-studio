@@ -248,7 +248,7 @@ def _combo_css():
         f"QComboBox QAbstractItemView {{ background:{THEME['bg_panel']}; "
         f"  color:{THEME['text_primary']}; "
         f"  selection-background-color:{THEME['accent_primary']}; "
-        f"  selection-color:{THEME['bg_main']}; outline:none; "
+        f"  selection-color:{THEME['text_on_accent']}; outline:none; "
         f"  border:{THEME['border_width']} solid {THEME['bg_border']}; }}"
         f"QComboBox QAbstractItemView::item {{ min-height:{BUTTON_H - 12}px; "
         f"  padding:2px 8px; }}"
@@ -393,7 +393,7 @@ def _list_css(widget_name):
         f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; }}"
         f"{widget_name}::item {{ padding:5px 6px; }}"
         f"{widget_name}::item:selected {{ background:{THEME['accent_primary']}; "
-        f"  color:{THEME['bg_main']}; }}"
+        f"  color:{THEME['text_on_accent']}; }}"
         f"{widget_name}::item:hover {{ background:{THEME['bg_bar']}; }}"
         f"QScrollBar:vertical {{ background:{THEME['bg_panel']}; width:8px; "
         f"  border:none; }}"
@@ -429,10 +429,10 @@ def bold_font():
 PRIMARY, DEFAULT, SUBTLE, DANGER = "primary", "default", "subtle", "danger"
 
 _VARIANTS = {
-    PRIMARY: ("accent_primary", "bg_main", "accent_hover"),
+    PRIMARY: ("accent_primary", "text_on_accent", "accent_hover"),
     DEFAULT: ("bg_panel", "text_primary", "bg_hover"),
     SUBTLE: ("bg_main", "text_muted", "bg_hover"),
-    DANGER: ("accent_gold", "bg_main", "accent_hover"),
+    DANGER: ("accent_gold", "text_on_accent", "accent_hover"),
 }
 
 

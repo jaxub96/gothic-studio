@@ -15,12 +15,14 @@ from pathlib import Path
 if "--dev" in sys.argv:       # must be set before project is imported
     os.environ.setdefault("GOTHIC_STUDIO_DEV", "1")
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QIcon, QPalette
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QMessageBox, QStatusBar,
                              QTabWidget)
 
 import firstrun
 import project
+import theme
 import ui
 from theme import SS, THEME
 
@@ -101,11 +103,41 @@ class Studio(QMainWindow):
             f"Point at a {project.GDC_NAME} binary", compact=True)
         self.gdc_btn.setVisible(not project.find_gdc().is_file())
 
+        self.theme_btn = ui.button(
+            self._theme_label(), self._toggle_theme, ui.DEFAULT,
+            "Switch between the light and dark look (applies on restart)",
+            compact=True)
+
         bar.addWidget(self.path_label, 1)
         bar.addPermanentWidget(self.gdc_btn)
+        bar.addPermanentWidget(self.theme_btn)
         bar.addPermanentWidget(self.folder_btn)
         bar.addPermanentWidget(self.compile_btn)
         self.setStatusBar(bar)
+
+    def _theme_label(self):
+        """Names the look you would switch *to*, like a light switch."""
+        return "Light mode" if self._next_mode() == "light" else "Dark mode"
+
+    def _next_mode(self):
+        # Compare against the saved choice, not the running one, so a second
+        # click before restarting undoes the first.
+        import config
+        saved = config.get("theme", theme.MODE)
+        return "light" if saved == "dark" else "dark"
+
+    def _toggle_theme(self):
+        mode = self._next_mode()
+        if not theme.set_mode(mode):
+            self.statusBar().showMessage("Could not save the theme setting", 8000)
+            return
+        self.theme_btn.setText(self._theme_label())
+        if mode == theme.MODE:
+            self.statusBar().showMessage(f"Staying in {mode} mode", 6000)
+        else:
+            self.statusBar().showMessage(
+                f"{mode.capitalize()} mode saved - restart Gothic Studio to apply it",
+                10000)
 
     def _locate_gdc(self):
         if firstrun.choose_gdc(self):
@@ -222,6 +254,12 @@ def main():
     if sys.platform != "darwin":
         app.setWindowIcon(QIcon(str(ICON)))
 
+    # Let the native window frame (title bar) match, where Qt can (6.8+).
+    hints = app.styleHints()
+    if hasattr(hints, "setColorScheme"):
+        hints.setColorScheme(Qt.ColorScheme.Dark if theme.MODE == "dark"
+                             else Qt.ColorScheme.Light)
+
     pal = QPalette()
     pal.setColor(QPalette.ColorRole.Window, QColor(THEME["bg_main"]))
     pal.setColor(QPalette.ColorRole.WindowText, QColor(THEME["text_primary"]))
@@ -231,7 +269,7 @@ def main():
     pal.setColor(QPalette.ColorRole.Button, QColor(THEME["bg_bar"]))
     pal.setColor(QPalette.ColorRole.ButtonText, QColor(THEME["text_secondary"]))
     pal.setColor(QPalette.ColorRole.Highlight, QColor(THEME["accent_primary"]))
-    pal.setColor(QPalette.ColorRole.HighlightedText, QColor(THEME["bg_main"]))
+    pal.setColor(QPalette.ColorRole.HighlightedText, QColor(THEME["text_on_accent"]))
     app.setPalette(pal)
 
     if not DEV and not project.FOUND and not firstrun.ensure():

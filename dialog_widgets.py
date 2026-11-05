@@ -517,7 +517,7 @@ class ChatLinesWidget(QWidget):
         self.speaker_btn.setText(speaker_display_name(self.current_speaker))
         color = THEME["accent_primary"] if is_hero else THEME["accent_secondary"]
         self.speaker_btn.setStyleSheet(
-            f"QPushButton {{ background:{color}; color:{THEME['bg_main']}; border:none; "
+            f"QPushButton {{ background:{color}; color:{THEME['text_on_accent']}; border:none; "
             f"border-radius:{THEME['radius_md']}; font-weight:700; padding:7px 0; }}"
             f"QPushButton:hover {{ background:{THEME['accent_hover']}; }}"
         )

@@ -7,39 +7,104 @@ hard-coded color, font name, or size.
 import re
 from PyQt6.QtGui import QFont, QColor, QSyntaxHighlighter, QTextCharFormat
 
-THEME = {
-"bg_main":          "#ffffff",
-"bg_panel":         "#f4f4f2",
-"bg_bar":           "#f4f4f2",
-"bg_border":        "#1a1a1a",
-"bg_input":         "#ffffff",
-"bg_input_border":  "#1a1a1a",
-"bg_hover":         "#e7e7e2",
-"bg_choice":        "#2b2b27",
-"bg_choice_input":  "#34342f",
-"bg_code":          "#f4f4f2",
-"text_primary":     "#1a1a1a",
-"text_secondary":   "#33332f",
-"text_muted":        "#6b6b66",
+import config
 
-"accent_primary":   "#e8431c",
-"accent_hover":     "#c93512",
-"accent_secondary": "#3f5f52",
+# ── Colour palettes ───────────────────────────────────────────────────────────
+# Same keys in both; THEME below picks one. "text_on_accent" is the text that
+# sits on a solid accent fill (primary buttons, selections), which stays light
+# whichever palette is active.
 
-# Dialogue
-"bubble_npc_bg":    "#f4f4f2",
-"bubble_npc_text":  "#1a1a1a",
+LIGHT = {
+    "bg_main":          "#ffffff",
+    "bg_panel":         "#f4f4f2",
+    "bg_bar":           "#f4f4f2",
+    "bg_border":        "#1a1a1a",
+    "bg_input":         "#ffffff",
+    "bg_input_border":  "#1a1a1a",
+    "bg_hover":         "#e7e7e2",
+    "bg_choice":        "#2b2b27",
+    "bg_choice_input":  "#34342f",
+    "bg_code":          "#f4f4f2",
+    "text_primary":     "#1a1a1a",
+    "text_secondary":   "#33332f",
+    "text_muted":       "#6b6b66",
+    "text_on_accent":   "#ffffff",
 
-"bubble_hero_bg":   "#ffe9e2",
-"bubble_hero_text": "#1a1a1a",
+    "accent_primary":   "#e8431c",
+    "accent_hover":     "#c93512",
+    "accent_secondary": "#3f5f52",
+    "accent_gold":      "#b9801f",
+
+    # Dialogue
+    "bubble_npc_bg":    "#f4f4f2",
+    "bubble_npc_text":  "#1a1a1a",
+    "bubble_hero_bg":   "#ffe9e2",
+    "bubble_hero_text": "#1a1a1a",
+
     "syn_keyword":      "#c13f1d",
     "syn_type":         "#5a4fa0",
     "syn_function":     "#2f6f58",
     "syn_string":       "#a0701f",
     "syn_comment":      "#9a9a8e",
     "syn_number":       "#3b6aa0",
-    "font_display":     "Consolas, Cascadia Code, monospace",   # new key
-    "font_ui":          "Segoe UI, Helvetica Neue, Arial, sans-serif",   # unchanged — body stays legible
+}
+
+# Ink instead of paper: warm near-blacks, soft hairlines instead of hard black
+# rules, and the signal orange lifted a touch so it holds up on a dark ground.
+DARK = {
+    "bg_main":          "#161614",
+    "bg_panel":         "#1f1f1c",
+    "bg_bar":           "#1f1f1c",
+    "bg_border":        "#5c5c55",
+    "bg_input":         "#121210",
+    "bg_input_border":  "#5c5c55",
+    "bg_hover":         "#2b2b27",
+    "bg_choice":        "#2b2b27",
+    "bg_choice_input":  "#34342f",
+    "bg_code":          "#1f1f1c",
+    "text_primary":     "#ecebe4",
+    "text_secondary":   "#d0cfc7",
+    "text_muted":       "#94938a",
+    "text_on_accent":   "#ffffff",
+
+    "accent_primary":   "#e8532c",
+    "accent_hover":     "#c8401c",
+    "accent_secondary": "#5d8a77",
+    "accent_gold":      "#b9862a",
+
+    # Dialogue
+    "bubble_npc_bg":    "#262623",
+    "bubble_npc_text":  "#ecebe4",
+    "bubble_hero_bg":   "#3b231a",
+    "bubble_hero_text": "#f3e6e0",
+
+    "syn_keyword":      "#ff7d57",
+    "syn_type":         "#ab9ff0",
+    "syn_function":     "#6ec7a3",
+    "syn_string":       "#dcae55",
+    "syn_comment":      "#7a7a70",
+    "syn_number":       "#7eaee3",
+}
+
+PALETTES = {"light": LIGHT, "dark": DARK}
+
+# Read once at start-up: every widget bakes its stylesheet from THEME when it
+# is built, so switching takes effect on the next launch.
+MODE = config.get("theme", "light")
+if MODE not in PALETTES:
+    MODE = "light"
+
+
+def set_mode(mode):
+    """Remember the palette for next launch. Returns True if it was saved."""
+    return mode in PALETTES and config.save("theme", mode)
+
+
+THEME = {
+    **PALETTES[MODE],
+
+    "font_display":     "Consolas, Cascadia Code, monospace",
+    "font_ui":          "Segoe UI, Helvetica Neue, Arial, sans-serif",
     "font_code":        "Consolas, Cascadia Code, monospace",
     "font_size_ui":     "21px",
     "font_size_small":  "18px",
@@ -105,7 +170,7 @@ def _ss_combo():
         f"QComboBox::drop-down {{ border:none; }}"
         f"QComboBox QAbstractItemView {{ background:{t['bg_panel']}; color:{t['text_primary']}; "
         f"  selection-background-color:{t['accent_primary']}; "
-        f"  selection-color:{t['bg_main']}; }}"
+        f"  selection-color:{t['text_on_accent']}; }}"
     )
 
 def _ss_check():
@@ -254,4 +319,3 @@ def mono_font():
     f.setStyleHint(QFont.StyleHint.Monospace)
     return f
 
-THEME.setdefault("accent_gold", "#b9801f")
