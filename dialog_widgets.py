@@ -306,6 +306,9 @@ class EffectBubble(QFrame, _DropTargetMixin):
 
         icon = self.ICONS.get(entry.kind, "•")
         lbl = QLabel(f"{icon}  {entry.summary()}")
+        # Wrap rather than widen: an unwrapped long condition pushed the whole
+        # chat column past its pane and clipped the line bubbles beside it.
+        lbl.setWordWrap(True)
         lbl.setStyleSheet(
             f"color:{THEME['text_secondary']}; background:transparent; "
             f"font-size:{THEME['font_size_small']}; font-style:italic;"
@@ -480,6 +483,7 @@ class ChatLinesWidget(QWidget):
         self.scroll = QScrollArea()
         self.scroll.setWidget(self.chat_container)
         self.scroll.setWidgetResizable(True)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll.setMinimumHeight(220)
         self.scroll.setStyleSheet(
             f"QScrollArea {{ border:none; "

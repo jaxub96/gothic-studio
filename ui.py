@@ -59,10 +59,10 @@ FONT_VALUE = THEME["font_size_small"]
 
 def heading(text):
     """A section title."""
-    w = QLabel(text.upper())
+    w = QLabel(text[:1].upper() + text[1:].lower() if text.isupper() else text)
     w.setStyleSheet(
-        f"color:{THEME['text_muted']}; font-size:{FONT_HINT}; font-weight:700; "
-        f"letter-spacing:2px; background:transparent; font-family:{THEME['font_code']};")
+        f"color:{THEME['text_secondary']}; font-size:{FONT_LABEL}; font-weight:700; "
+        f"background:transparent; font-family:{THEME['font_ui']};")
     return w
 
 
@@ -184,7 +184,7 @@ def _input_css(widget_name):
         f"  color:{THEME['text_primary']}; "
         f"  border:{THEME['border_width']} solid {THEME['bg_input_border']}; "
         f"  border-radius:{THEME['radius_sm']}; padding:5px 8px; "
-        f"  font-family:{THEME['font_code']}; font-size:{FONT_LABEL}; "
+        f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
         f"  selection-background-color:{THEME['accent_primary']}; }}"
         f"{widget_name}:focus {{ border:{THEME['border_width']} solid "
         f"  {THEME['accent_primary']}; }}"
@@ -255,7 +255,7 @@ def _combo_css():
         f"QComboBox QAbstractScrollArea QScrollBar:vertical {{ "
         f"  background:{THEME['bg_panel']}; width:12px; border:none; }}"
         f"QComboBox QAbstractScrollArea QScrollBar::handle:vertical {{ "
-        f"  background:{THEME['bg_border']}; border-radius:0; min-height:24px; }}")
+        f"  background:{THEME['bg_border_strong']}; border-radius:4px; min-height:24px; }}")
 
 
 def dropdown(items, value=None, on_change=None):
@@ -299,11 +299,11 @@ def slider(lo, hi, value, on_change, fmt=str, width=88):
     bar.setValue(value)
     bar.setStyleSheet(
         f"QSlider::groove:horizontal {{ background:{THEME['bg_input_border']}; "
-        f"  height:3px; border-radius:0; }}"
+        f"  height:4px; border-radius:2px; }}"
         f"QSlider::sub-page:horizontal {{ background:{THEME['accent_primary']}; "
-        f"  height:3px; border-radius:0; }}"
+        f"  height:4px; border-radius:2px; }}"
         f"QSlider::handle:horizontal {{ background:{THEME['accent_primary']}; "
-        f"  width:12px; height:12px; margin:-5px 0; border-radius:0; }}"
+        f"  width:14px; height:14px; margin:-5px 0; border-radius:7px; }}"
         f"QSlider::handle:horizontal:disabled {{ "
         f"  background:{THEME['bg_border']}; }}")
 
@@ -333,8 +333,8 @@ def checkbox(text, checked=False, on_change=None, tooltip="", compact=False):
         f"QCheckBox {{ color:{THEME['text_secondary']}; "
         f"  font-size:{FONT_LABEL}; spacing:4px; background:transparent; }}"
         f"QCheckBox::indicator {{ width:14px; height:14px; "
-        f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
-        f"  border-radius:0; background:{THEME['bg_input']}; }}"
+        f"  border:{THEME['border_width']} solid {THEME['bg_border_strong']}; "
+        f"  border-radius:3px; background:{THEME['bg_input']}; }}"
         f"QCheckBox::indicator:checked {{ background:{THEME['accent_primary']}; "
         f"  border-color:{THEME['accent_primary']}; }}"
         f"QCheckBox:disabled {{ color:{THEME['text_muted']}; }}")
@@ -365,7 +365,7 @@ def radio_row(text, options, value, on_change):
     css = (f"QRadioButton {{ color:{THEME['text_secondary']}; "
            f"  font-size:{FONT_LABEL}; spacing:4px; background:transparent; }}"
            f"QRadioButton::indicator {{ width:12px; height:12px; "
-           f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
+           f"  border:{THEME['border_width']} solid {THEME['bg_border_strong']}; "
            f"  border-radius:6px; background:{THEME['bg_input']}; }}"
            f"QRadioButton::indicator:checked {{ "
            f"  background:{THEME['accent_primary']}; "
@@ -397,8 +397,8 @@ def _list_css(widget_name):
         f"{widget_name}::item:hover {{ background:{THEME['bg_bar']}; }}"
         f"QScrollBar:vertical {{ background:{THEME['bg_panel']}; width:8px; "
         f"  border:none; }}"
-        f"QScrollBar::handle:vertical {{ background:{THEME['bg_border']}; "
-        f"  border-radius:0; }}"
+        f"QScrollBar::handle:vertical {{ background:{THEME['bg_border_strong']}; "
+        f"  border-radius:4px; }}"
         f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ "
         f"  height:0; }}")
 
@@ -439,7 +439,7 @@ _VARIANTS = {
 def _button_css(variant, height):
     bg, fg, hover = _VARIANTS.get(variant, _VARIANTS[DEFAULT])
     solid = variant in (PRIMARY, DANGER)
-    edge = THEME[bg] if solid else THEME['bg_border']
+    edge = THEME[bg] if solid else THEME['bg_input_border']
     return (
         f"QPushButton {{ background:{THEME[bg]}; color:{THEME[fg]}; "
         f"  border:{THEME['border_width']} solid {edge}; "
@@ -447,7 +447,7 @@ def _button_css(variant, height):
         f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
         f"  font-weight:600; min-height:{height}px; }}"
         f"QPushButton:hover {{ background:{THEME[hover]}; "
-        f"  border-color:{THEME[hover] if solid else THEME['bg_border']}; "
+        f"  border-color:{THEME[hover] if solid else THEME['bg_border_strong']}; "
         f"  color:{THEME[fg] if solid else THEME['text_primary']}; }}"
         f"QPushButton:disabled {{ color:{THEME['text_muted']}; "
         f"  background:{THEME['bg_panel']}; }}")
@@ -495,8 +495,8 @@ SS = {
         f"QCheckBox {{ color:{THEME['text_secondary']}; font-size:{FONT_LABEL}; "
         f"  spacing:4px; background:transparent; }}"
         f"QCheckBox::indicator {{ width:14px; height:14px; "
-        f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
-        f"  border-radius:0; background:{THEME['bg_input']}; }}"
+        f"  border:{THEME['border_width']} solid {THEME['bg_border_strong']}; "
+        f"  border-radius:3px; background:{THEME['bg_input']}; }}"
         f"QCheckBox::indicator:checked {{ background:{THEME['accent_primary']}; "
         f"  border-color:{THEME['accent_primary']}; }}"),
     "add_btn": _small_button_css("accent_primary"),
@@ -512,7 +512,7 @@ def placeholder(text):
     w = QLabel(text)
     w.setAlignment(Qt.AlignmentFlag.AlignCenter)
     w.setStyleSheet(
-        f"color:{THEME['bg_border']}; font-size:{THEME['font_size_placeholder']}; "
+        f"color:{THEME['text_muted']}; font-size:{THEME['font_size_placeholder']}; "
         f"font-family:{THEME['font_ui']}; font-style:italic; background:transparent;")
     return w
 
@@ -557,11 +557,13 @@ class SideTabs(QWidget):
             f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
             f"  font-weight:600; }}"
             f"QListWidget::item {{ padding:8px 10px; margin-bottom:2px; "
-            f"  color:{THEME['text_muted']}; }}"
+            f"  color:{THEME['text_muted']}; border-radius:{THEME['radius_sm']}; }}"
             f"QListWidget::item:hover {{ color:{THEME['text_primary']}; "
-            f"  background:transparent; }}"
-            f"QListWidget::item:selected {{ background:{THEME['text_primary']}; "
-            f"  color:{THEME['bg_main']}; }}")
+            f"  background:{THEME['bg_hover']}; }}"
+            # A quiet accent tint, not an inverted block: it says "you are
+            # here" without being the loudest thing on screen.
+            f"QListWidget::item:selected {{ background:{THEME['accent_soft']}; "
+            f"  color:{THEME['text_primary']}; }}")
         self._stack = QStackedWidget()
         lay.addWidget(self._list)
         lay.addWidget(self._stack, 1)
@@ -705,6 +707,8 @@ class CodeView(QTextEdit):
     def __init__(self, font=None):
         super().__init__()
         self.setReadOnly(True)
+        # Code wrapped mid-statement is unreadable; scroll sideways instead.
+        self.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         if font is not None:
             self.setFont(font)
         CodeView._views.add(self)

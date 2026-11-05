@@ -10,80 +10,88 @@ from PyQt6.QtGui import QFont, QColor, QSyntaxHighlighter, QTextCharFormat
 import config
 
 # ── Colour palettes ───────────────────────────────────────────────────────────
-# Same keys in both; THEME below picks one. "text_on_accent" is the text that
-# sits on a solid accent fill (primary buttons, selections), which stays light
-# whichever palette is active.
+# Same keys in both; THEME below picks one. Both are deliberately low-contrast:
+# surfaces step by a few percent, rules are soft greys rather than black, and
+# text is a dark/light grey rather than pure black/white, so a long session of
+# form-filling is easy on the eyes. Contrast is spent on the one accent.
+#
+#   bg_border          hairlines between areas (dividers, tab edges)
+#   bg_border_strong   things you grab or must find: scroll handles, check boxes
+#   accent_soft        a quiet accent tint for "you are here" (selected side tab)
+#   text_on_accent     text that sits on a solid accent fill
 
-LIGHT = {
-    "bg_main":          "#ffffff",
-    "bg_panel":         "#f4f4f2",
-    "bg_bar":           "#f4f4f2",
-    "bg_border":        "#1a1a1a",
-    "bg_input":         "#ffffff",
-    "bg_input_border":  "#1a1a1a",
-    "bg_hover":         "#e7e7e2",
+LIGHT = {                       # stone: cool grey-green paper, rust accent
+    "bg_main":          "#f4f5f2",
+    "bg_panel":         "#eceee9",
+    "bg_bar":           "#eceee9",
+    "bg_border":        "#d5d8d1",
+    "bg_border_strong": "#a7aca3",
+    "bg_input":         "#fbfbf9",
+    "bg_input_border":  "#c6cac2",
+    "bg_hover":         "#e2e5df",
     "bg_choice":        "#2b2b27",
     "bg_choice_input":  "#34342f",
-    "bg_code":          "#f4f4f2",
-    "text_primary":     "#1a1a1a",
-    "text_secondary":   "#33332f",
-    "text_muted":       "#6b6b66",
+    "bg_code":          "#eceee9",
+    "text_primary":     "#2c302c",
+    "text_secondary":   "#464b45",
+    "text_muted":       "#767c74",
     "text_on_accent":   "#ffffff",
 
-    "accent_primary":   "#e8431c",
-    "accent_hover":     "#c93512",
-    "accent_secondary": "#3f5f52",
-    "accent_gold":      "#b9801f",
+    "accent_primary":   "#bd5532",
+    "accent_hover":     "#a5472a",
+    "accent_soft":      "#f0ddd4",
+    "accent_secondary": "#4f7062",
+    "accent_gold":      "#a77a2e",
 
     # Dialogue
-    "bubble_npc_bg":    "#f4f4f2",
-    "bubble_npc_text":  "#1a1a1a",
-    "bubble_hero_bg":   "#ffe9e2",
-    "bubble_hero_text": "#1a1a1a",
+    "bubble_npc_bg":    "#e5e8e2",
+    "bubble_npc_text":  "#2c302c",
+    "bubble_hero_bg":   "#f3e1d8",
+    "bubble_hero_text": "#2c302c",
 
-    "syn_keyword":      "#c13f1d",
-    "syn_type":         "#5a4fa0",
-    "syn_function":     "#2f6f58",
-    "syn_string":       "#a0701f",
-    "syn_comment":      "#9a9a8e",
-    "syn_number":       "#3b6aa0",
+    "syn_keyword":      "#ad4a2b",
+    "syn_type":         "#5d5a92",
+    "syn_function":     "#3b6c5a",
+    "syn_string":       "#8f6d2e",
+    "syn_comment":      "#959a92",
+    "syn_number":       "#47698d",
 }
 
-# Ink instead of paper: warm near-blacks, soft hairlines instead of hard black
-# rules, and the signal orange lifted a touch so it holds up on a dark ground.
-DARK = {
-    "bg_main":          "#161614",
-    "bg_panel":         "#1f1f1c",
-    "bg_bar":           "#1f1f1c",
-    "bg_border":        "#5c5c55",
-    "bg_input":         "#121210",
-    "bg_input_border":  "#5c5c55",
-    "bg_hover":         "#2b2b27",
+DARK = {                        # slate: blue-grey charcoal, not black
+    "bg_main":          "#25282b",
+    "bg_panel":         "#2c3033",
+    "bg_bar":           "#2c3033",
+    "bg_border":        "#3b4044",
+    "bg_border_strong": "#5b6166",
+    "bg_input":         "#212427",
+    "bg_input_border":  "#464c51",
+    "bg_hover":         "#343a3e",
     "bg_choice":        "#2b2b27",
     "bg_choice_input":  "#34342f",
-    "bg_code":          "#1f1f1c",
-    "text_primary":     "#ecebe4",
-    "text_secondary":   "#d0cfc7",
-    "text_muted":       "#94938a",
+    "bg_code":          "#292d30",
+    "text_primary":     "#dcddd8",
+    "text_secondary":   "#c1c3bd",
+    "text_muted":       "#8d918b",
     "text_on_accent":   "#ffffff",
 
-    "accent_primary":   "#e8532c",
-    "accent_hover":     "#c8401c",
-    "accent_secondary": "#5d8a77",
-    "accent_gold":      "#b9862a",
+    "accent_primary":   "#c7653f",
+    "accent_hover":     "#b25735",
+    "accent_soft":      "#46352e",
+    "accent_secondary": "#5f8777",
+    "accent_gold":      "#a9853f",
 
     # Dialogue
-    "bubble_npc_bg":    "#262623",
-    "bubble_npc_text":  "#ecebe4",
-    "bubble_hero_bg":   "#3b231a",
-    "bubble_hero_text": "#f3e6e0",
+    "bubble_npc_bg":    "#33383b",
+    "bubble_npc_text":  "#dcddd8",
+    "bubble_hero_bg":   "#47342c",
+    "bubble_hero_text": "#e8dcd5",
 
-    "syn_keyword":      "#ff7d57",
-    "syn_type":         "#ab9ff0",
-    "syn_function":     "#6ec7a3",
-    "syn_string":       "#dcae55",
-    "syn_comment":      "#7a7a70",
-    "syn_number":       "#7eaee3",
+    "syn_keyword":      "#de8a67",
+    "syn_type":         "#a8a3d8",
+    "syn_function":     "#7fb69e",
+    "syn_string":       "#cdab69",
+    "syn_comment":      "#737975",
+    "syn_number":       "#86a8cc",
 }
 
 PALETTES = {"light": LIGHT, "dark": DARK}
@@ -114,9 +122,9 @@ THEME = {
     "font_size_code":   10,          # pt, used for QFont object
 
     # ── Geometry ──────────────────────────────────────────────────────────────
-    "radius_sm":        "0px",
-    "radius_md":        "0px",
-    "radius_lg":        "0px",
+    "radius_sm":        "4px",
+    "radius_md":        "6px",
+    "radius_lg":        "8px",
     "border_width":     "1px",
     "topbar_height":    56,
     "sidebar_width":    212,
@@ -179,7 +187,7 @@ def _ss_check():
         f"QCheckBox {{ color:{t['text_secondary']}; spacing:6px; }}"
         f"QCheckBox::indicator {{ width:13px; height:13px; "
         f"  border:{t['border_width']} solid {t['bg_border']}; "
-        f"  border-radius:0; background:{t['bg_input']}; }}"
+        f"  border-radius:3px; background:{t['bg_input']}; }}"
         f"QCheckBox::indicator:checked {{ background:{t['accent_primary']}; "
         f"  border-color:{t['accent_primary']}; }}"
     )
@@ -226,9 +234,16 @@ def _ss_global():
             background: {t['bg_panel']}; width: 8px; border-radius: 0;
         }}
         QScrollBar::handle:vertical {{
-            background: {t['bg_border']}; border-radius: 0;
+            background: {t['bg_border_strong']}; border-radius: 4px;
         }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        QScrollBar:horizontal {{
+            background: {t['bg_panel']}; height: 8px; border-radius: 0;
+        }}
+        QScrollBar::handle:horizontal {{
+            background: {t['bg_border_strong']}; border-radius: 4px; min-width: 24px;
+        }}
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
         QSplitter::handle {{ background: {t['bg_main']}; width: 10px; }}
         QTabWidget::pane {{
             border: none;
