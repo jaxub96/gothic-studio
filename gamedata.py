@@ -33,10 +33,15 @@ def _scan(globpat, pattern):
 # Returns {instance_id: display_name}. Items whose name is a constant rather
 # than a literal fall back to showing their id.
 
+def _item_files():
+    """Vanilla's Items/ plus the mod package's Mod/ (see mod/README.md)."""
+    return sorted(iglob(CONTENT / "Items", "**/*.d")) + sorted(iglob(CONTENT / "Mod", "**/*.d"))
+
+
 @lru_cache
 def items():
     out = {}
-    for f in sorted(iglob(CONTENT / "Items", "**/*.d")):
+    for f in _item_files():
         for seg in re.split(r"(?im)^[ \t]*INSTANCE[ \t]+", _read(f))[1:]:
             m = re.match(r"(\w+)\s*\(\s*C_Item", seg, re.I)
             if not m:
@@ -61,7 +66,7 @@ def item_visuals():
     texture - so it is the first link in resolving an armor preview.
     """
     out = {}
-    for f in sorted(iglob(CONTENT / "Items", "**/*.d")):
+    for f in _item_files():
         for seg in re.split(r"(?im)^[ \t]*INSTANCE[ \t]+", _read(f))[1:]:
             m = re.match(r"(\w+)\s*\(\s*C_Item", seg, re.I)
             if not m:
@@ -97,13 +102,63 @@ def armors_by_guild(gender=None):
 
 # --- NPC fields -------------------------------------------------------------
 
+_GIL_NUMBER = re.compile(r"^\s*const\s+int\s+(GIL_\w+)\s*=\s*(\d+)", re.I | re.M)
+_GIL_ALIAS = re.compile(r"^[ \t]*const\s+int\s+(GIL_\w+)\s*=\s*(GIL_\w+)\s*;[ \t]*(?://[ \t]*(.*))?$",
+                        re.I | re.M)
+_GIL_SKIP = ("GIL_SEPERATOR", "GIL_EMPTY", "GIL_PUBLIC", "GIL_HUMAN")
+
+
+def _guild_slots():
+    """{GIL_NAME: slot} for the vanilla numbers in _intern/Constants.d."""
+    txt = _read(CONTENT / "_intern" / "Constants.d")
+    return {n: int(v) for n, v in _GIL_NUMBER.findall(txt)}
+
+
+@lru_cache
+def mod_guilds():
+    """[(GIL_ALIAS, vanilla GIL_, display name)] from the mod package's guild file.
+
+    A mod cannot add human guilds - vanilla fills all 16 slots - so it names a
+    slot for itself: `const int GIL_WATCH = GIL_MIL;  // City Watch - note`.
+    The display name is the comment up to " - ". Read raw, because _read()
+    drops comments.
+    """
+    out = []
+    for f in sorted(iglob(CONTENT / "Mod", "**/*.d")):
+        try:
+            txt = f.read_text(encoding=ENCODING, errors="ignore")
+        except OSError:
+            continue
+        for alias, slot, note in _GIL_ALIAS.findall(txt):
+            name = (note or "").split(" - ")[0].strip()
+            out.append((alias, slot, name))
+    return out
+
+
 @lru_cache
 def guilds():
-    """Human guilds only. GIL_SEPERATOR_HUM = 16 divides humans from monsters."""
-    txt = _read(CONTENT / "_intern" / "Constants.d")
-    pairs = re.findall(r"^\s*const\s+int\s+(GIL_\w+)\s*=\s*(\d+)", txt, re.I | re.M)
-    skip = ("GIL_SEPERATOR", "GIL_EMPTY", "GIL_PUBLIC", "GIL_HUMAN")
-    return [n for n, v in pairs if int(v) < 16 and not n.upper().startswith(skip)]
+    """Human guilds only. GIL_SEPERATOR_HUM = 16 divides humans from monsters.
+
+    With the mod package installed, its names come first and the vanilla slots
+    they take over are left out - both compile, but the mod's scripts should
+    say GIL_WATCH, not GIL_MIL. unknown() still accepts the vanilla names.
+    """
+    vanilla = [n for n, v in _guild_slots().items()
+               if v < 16 and not n.upper().startswith(_GIL_SKIP)]
+    mod = mod_guilds()
+    taken = {slot.upper() for _, slot, _ in mod}
+    return [a for a, _, _ in mod] + [n for n in vanilla if n.upper() not in taken]
+
+
+@lru_cache
+def guild_names():
+    """{GIL_ALIAS: display name} for the mod's guilds, for labels.pretty()."""
+    return {alias: name for alias, _, name in mod_guilds() if name}
+
+
+def all_guilds():
+    """Every name a script may use for a human guild: the mod's and vanilla's."""
+    return guilds() + [n for n in _guild_slots() if n not in guilds()]
 
 
 @lru_cache
@@ -353,7 +408,9 @@ def npc_instances():
 @lru_cache
 def xp_constants():
     """XP_ constants, and XP_ vars too: vanilla XP_Ambient is a var and works the same in B_GivePlayerXP."""
-    return _scan("Story/XP_Constants.d", r"^\s*(?:const|var)\s+int\s+(XP_\w+)")
+    pat = r"^\s*(?:const|var)\s+int\s+(XP_\w+)"
+    return sorted(set(_scan("Story/XP_Constants.d", pat) + _scan("Mod/**/*.d", pat)),
+                  key=str.lower)
 
 
 @lru_cache
@@ -444,7 +501,7 @@ def unknown(kind, value):
     table = {
         "item": lambda: items().keys(),
         "armor": lambda: list(armors().keys()) + ["-1", "NO_ARMOR"],
-        "guild": guilds,
+        "guild": all_guilds,
         "npctype": npctypes,
         "tactic": tactics,
         "routine": routines,
@@ -461,7 +518,7 @@ def unknown(kind, value):
 
 if __name__ == "__main__":
     # `python gamedata.py` prints what it found - handy after editing a regex.
-    for fn in (items, armors, guilds, npctypes, tactics, routines, heads,
+    for fn in (items, armors, guilds, mod_guilds, npctypes, tactics, routines, heads,
                body_textures, faces, overlays, voices, npc_instances,
                xp_constants, log_topics, info_instances, waypoints):
         print(f"{fn.__name__:16} {len(fn())}")
