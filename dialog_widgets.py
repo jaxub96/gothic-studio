@@ -630,7 +630,7 @@ class ChoiceWidget(QFrame):
         self.label.setPlaceholderText("Choice shown to player…")
         self.label.setStyleSheet(
             f"QLineEdit {{ background:{THEME['bg_panel']}; color:{THEME['accent_hover']}; "
-            f"border:none; border-radius:2px; padding:4px 6px; font-weight:500; }}"
+            f"border:none; border-radius:2px; padding:4px 6px; font-weight:400; }}"
         )
         self.func = QLineEdit()
         self.func.setPlaceholderText("Handler func")
@@ -690,7 +690,7 @@ class BlockEditor(QWidget):
         if self.is_followup:
             hint = QLabel("↳  Follow-up scene, shown after a choice is picked")
             hint.setStyleSheet(
-                f"color:{THEME['accent_secondary']}; font-weight:500; "
+                f"color:{THEME['accent_secondary']}; font-weight:400; "
                 f"font-size:{THEME['font_size_small']}; padding-bottom:2px;"
             )
             root.addWidget(hint)

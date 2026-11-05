@@ -34,7 +34,8 @@ from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QFrame,
                              QTabWidget,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget,
-                             QPushButton, QRadioButton, QSlider, QSpinBox, QStackedWidget,
+                             QPushButton, QRadioButton, QScrollArea, QSlider,
+                             QSpinBox, QStackedWidget,
                              QTextEdit, QTimeEdit, QTreeWidget, QVBoxLayout,
                              QWidget)
 
@@ -94,7 +95,7 @@ def value_label(text="", width=88):
     w.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     w.setStyleSheet(
         f"color:{THEME['text_primary']}; font-size:{FONT_VALUE}; "
-        f"font-weight:500; background:transparent;")
+        f"font-weight:400; background:transparent;")
     return w
 
 
@@ -272,6 +273,12 @@ class Dropdown(QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        # Size from a short minimum, not the longest entry: one long label
+        # ("Militia - upright, martial  ·  HUMANS_MILITIA.MDS") would otherwise
+        # set the width of the whole page and, through it, the window.
+        self.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.setMinimumContentsLength(14)
 
     def hidePopup(self):
         super().hidePopup()
@@ -501,7 +508,7 @@ def _button_css(variant, height):
         f"  border:{THEME['border_width']} solid {edge}; "
         f"  border-radius:{THEME['radius_sm']}; padding:0 12px; "
         f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
-        f"  font-weight:500; min-height:{height}px; }}"
+        f"  font-weight:400; min-height:{height}px; }}"
         f"QPushButton:hover {{ background:{THEME[hover]}; "
         f"  border-color:{THEME[hover] if solid else THEME['bg_border_strong']}; "
         f"  color:{THEME[fg] if solid else THEME['text_primary']}; }}"
@@ -532,7 +539,7 @@ def _small_button_css(color_key, height=COMPACT_H):
         f"QPushButton {{ background:{THEME['bg_bar']}; color:{THEME[color_key]}; "
         f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
         f"  border-radius:{THEME['radius_sm']}; padding:0 10px; "
-        f"  font-size:{FONT_LABEL}; font-weight:500; min-height:{height}px; }}"
+        f"  font-size:{FONT_LABEL}; font-weight:400; min-height:{height}px; }}"
         f"QPushButton:hover {{ background:{THEME['bg_hover']}; "
         f"  color:{THEME['text_primary']}; }}")
 
@@ -601,6 +608,26 @@ def image_frame(height, text=""):
 
 # --- the shared page frame ----------------------------------------------------
 
+class _PageScroll(QScrollArea):
+    """Scrolls a page vertically only, and asks for the page's full width so
+    nothing is clipped at the right edge; height is what is free to scroll."""
+
+    def _width(self):
+        page_ = self.widget()
+        bar = self.verticalScrollBar().sizeHint().width()
+        return (page_.minimumSizeHint().width() if page_ else 0) + bar
+
+    def minimumSizeHint(self):
+        hint = super().minimumSizeHint()
+        hint.setWidth(max(hint.width(), self._width()))
+        return hint
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        hint.setWidth(max(hint.width(), self._width()))
+        return hint
+
+
 class SideTabs(QWidget):
     """Tabs down the left edge: a hard-ruled list beside a stack of pages.
 
@@ -624,7 +651,7 @@ class SideTabs(QWidget):
             f"  border-right:{THEME['border_width']} solid {THEME['bg_border']}; "
             f"  outline:none; padding:10px 8px; "
             f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
-            f"  font-weight:500; }}"
+            f"  font-weight:400; }}"
             f"QListWidget::item {{ padding:8px 10px; margin-bottom:2px; "
             f"  color:{THEME['text_muted']}; border-radius:{THEME['radius_sm']}; }}"
             f"QListWidget::item:hover {{ color:{THEME['text_primary']}; "
@@ -656,8 +683,16 @@ class SideTabs(QWidget):
             page_.deleteLater()
 
     def addTab(self, widget, title):
+        # Each page scrolls on its own, so a page that grows (another routine,
+        # a long inventory) adds a scroll bar instead of stretching the window.
+        scroll = _PageScroll()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { border:none; background:transparent; }")
+        scroll.setWidget(widget)
         self._list.addItem(title)
-        self._stack.addWidget(widget)
+        self._stack.addWidget(scroll)
         if self._list.currentRow() < 0:
             self._list.setCurrentRow(0)
 
@@ -665,7 +700,9 @@ class SideTabs(QWidget):
         return self._stack.count()
 
     def widget(self, index):
-        return self._stack.widget(index)
+        """The page itself, not the scroll area around it."""
+        scroll = self._stack.widget(index)
+        return scroll.widget() if scroll is not None else None
 
     def tabText(self, index):
         return self._list.item(index).text()

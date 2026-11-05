@@ -69,8 +69,8 @@ DARK = {                        # slate: blue-grey charcoal, not black
     "bg_choice":        "#2b2b27",
     "bg_choice_input":  "#34342f",
     "bg_code":          "#292d30",
-    "text_primary":     "#dcddd8",
-    "text_secondary":   "#c1c3bd",
+    "text_primary":     "#cfd1cb",
+    "text_secondary":   "#b5b8b2",
     "text_muted":       "#8d918b",
     "text_on_accent":   "#ffffff",
 
@@ -82,7 +82,7 @@ DARK = {                        # slate: blue-grey charcoal, not black
 
     # Dialogue
     "bubble_npc_bg":    "#33383b",
-    "bubble_npc_text":  "#dcddd8",
+    "bubble_npc_text":  "#cfd1cb",
     "bubble_hero_bg":   "#47342c",
     "bubble_hero_text": "#e8dcd5",
 
@@ -253,7 +253,7 @@ def _ss_check():
 def _ss_group():
     t = THEME
     return (
-        f"QGroupBox {{ color:{t['accent_secondary']}; font-weight:500; font-size:{t['font_size_small']}; "
+        f"QGroupBox {{ color:{t['accent_secondary']}; font-weight:400; font-size:{t['font_size_small']}; "
         f"  letter-spacing:0.3px; border:{t['border_width']} solid {t['bg_border']}; "
         f"  border-radius:{t['radius_lg']}; margin-top:10px; padding-top:6px; "
         f"  background:{t['bg_panel']}; font-family:{t['font_ui']}; }}"
@@ -267,7 +267,7 @@ def _ss_add_btn():
         f"QPushButton {{ background:{t['bg_bar']}; color:{t['text_secondary']}; "
         f"  border:{t['border_width']} solid {t['bg_border']}; "
         f"  border-radius:{t['radius_sm']}; padding:5px 12px; "
-        f"  font-size:{t['font_size_small']}; font-weight:500; }}"
+        f"  font-size:{t['font_size_small']}; font-weight:400; }}"
         f"QPushButton:hover {{ background:{t['bg_input_border']}; color:{t['text_primary']}; }}"
     )
 
@@ -319,14 +319,14 @@ def _ss_global():
             border-right: {t['border_width']} solid {t['bg_border']};
             font-family: {t['font_ui']};
             font-size: {t['font_size_small']};
-            font-weight: 500;
+            font-weight: 400;
         }}
         QTabBar::tab:hover {{ color: {t['text_primary']}; }}
         QTabBar::tab:selected {{
             background: {t['bg_panel']};
             color: {t['text_primary']};
             border-bottom: 1px solid {t['bg_panel']};
-            font-weight: 600;
+            font-weight: 400;
         }}
         QMessageBox {{ background: {t['bg_main']}; }}
     """
@@ -364,12 +364,12 @@ class DaedalusHighlighter(QSyntaxHighlighter):
             if italic: f.setFontItalic(True)
             return f
 
-        kw = fmt(t["syn_keyword"], bold=True)
+        kw = fmt(t["syn_keyword"])
         for w in ["instance", "func", "void", "int", "var", "return", "if", "else",
                   "INSTANCE", "FUNC", "VOID", "INT", "VAR"]:
             self.rules.append((re.compile(r'\b' + w + r'\b'), kw))
 
-        tp = fmt(t["syn_type"], bold=True)
+        tp = fmt(t["syn_type"])
         for w in ["C_INFO", "TRUE", "FALSE", "LOG_MISSION", "LOG_NOTE",
                   "LOG_RUNNING", "LOG_SUCCESS", "DIALOG_ENDE"]:
             self.rules.append((re.compile(r'\b' + w + r'\b'), tp))

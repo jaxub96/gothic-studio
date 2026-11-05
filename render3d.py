@@ -152,13 +152,17 @@ def render(models, width=320, height=460, yaw=25.0, pitch=8.0,
 
 
 def bounds(models):
-    """(half_w, half_h) of the models' world bounding box, as _render frames it.
+    """The world framing of `models`, as _render uses it.
 
-    half_w takes the wider of X and Z, so it does not change as the figure
-    turns. None when there is nothing to draw.
+    Returns (half_w, half_h, centre, face) or None when there is nothing to
+    draw. half_w takes the wider of X and Z, so it does not change as the
+    figure turns. `face` is the centre of the head mesh (the only model
+    placed by a matrix), or None without one.
     """
     lo, hi = [math.inf] * 3, [-math.inf] * 3
+    hlo, hhi = [math.inf] * 3, [-math.inf] * 3
     for model in models:
+        is_head = model.matrix is not None
         if not model.mesh:
             continue
         off = model.offset
@@ -178,11 +182,29 @@ def bounds(models):
                         lo[i] = v
                     if v > hi[i]:
                         hi[i] = v
+                    if is_head:
+                        if v < hlo[i]:
+                            hlo[i] = v
+                        if v > hhi[i]:
+                            hhi[i] = v
     if lo[0] == math.inf:
         return None
     half_h = max(hi[1] - lo[1], 1e-6) / 2
     half_w = max(hi[0] - lo[0], hi[2] - lo[2], 1e-6) / 2
-    return half_w, half_h
+    centre = tuple((lo[i] + hi[i]) / 2 for i in range(3))
+    face = (tuple((hlo[i] + hhi[i]) / 2 for i in range(3))
+            if hlo[0] != math.inf else None)
+    return half_w, half_h, centre, face
+
+
+def rotate(v, yaw, pitch):
+    """Turn a world vector the way _render turns the model."""
+    cy, sy = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
+    cp, sp = math.cos(math.radians(pitch)), math.sin(math.radians(pitch))
+    x, y, z = v
+    x, z = x * cy + z * sy, -x * sy + z * cy
+    y, z = y * cp - z * sp, y * sp + z * cp
+    return x, y, z
 
 
 def fit_scale(half_w, half_h, width, height, margin=0.06, zoom=1.0):
