@@ -6,6 +6,11 @@ Defaults are Gothic 2 NotR values that exist in this install.
 """
 
 
+def new_routine(activity="TA_Stand_WP", start=(8, 0), end=(8, 0), waypoint=""):
+    return {"activity": activity, "start": list(start), "end": list(end),
+            "waypoint": waypoint}
+
+
 class Npc:
     def __init__(self):
         # --- Identity ---
@@ -46,15 +51,10 @@ class Npc:
         self.magic = 0
 
         # --- Routine ---
-        # Two shifts. With split_routine off, the night shift mirrors the day
-        # one and you get the same single-activity schedule as before.
-        self.routine = "TA_Stand_WP"
-        self.waypoint = ""
-        self.split_routine = False
-        self.night_routine = "TA_Sleep"
-        self.night_waypoint = ""
-        self.day_start = 8            # hour the day shift begins
-        self.night_start = 22         # hour the night shift begins
+        # The daily schedule, one entry per TA_ line. Times are [hour, minute];
+        # an entry whose start equals its end runs all day. A blank waypoint
+        # means "the first routine's waypoint".
+        self.routines = [new_routine()]
 
         # --- Spawn ---
         # Wld_InsertNpc in Startup.d, written when the NPC is saved to the mod.
@@ -68,3 +68,25 @@ class Npc:
         self.inv_items = []
         self.talents = set()          # ids from talents.py
         self.ambient_inv = 0          # emit B_CreateAmbientInv (self)
+
+    # The first routine stands in for "the NPC's routine" wherever one value is
+    # wanted - the spawn waypoint defaults to its waypoint, for instance.
+    @property
+    def routine(self):
+        return self.routines[0]["activity"] if self.routines else "TA_Stand_WP"
+
+    @routine.setter
+    def routine(self, value):
+        if not self.routines:
+            self.routines.append(new_routine())
+        self.routines[0]["activity"] = value
+
+    @property
+    def waypoint(self):
+        return self.routines[0]["waypoint"] if self.routines else ""
+
+    @waypoint.setter
+    def waypoint(self, value):
+        if not self.routines:
+            self.routines.append(new_routine())
+        self.routines[0]["waypoint"] = value

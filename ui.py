@@ -29,14 +29,17 @@ Buttons
 
 import weakref
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, QTime, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QFrame,
                              QTabWidget,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget,
-                             QPushButton, QRadioButton, QSlider, QSpinBox, QStackedWidget,
-                             QTextEdit, QTreeWidget, QVBoxLayout, QWidget)
+                             QPushButton, QRadioButton, QScrollArea, QSlider,
+                             QSpinBox, QSplitter, QStackedWidget,
+                             QTextEdit, QTimeEdit, QTreeWidget, QVBoxLayout,
+                             QWidget)
 
+import theme
 from theme import THEME
 
 # --- one scale for everything ------------------------------------------------
@@ -44,13 +47,14 @@ GAP = 8                 # between related controls
 SPACING = 16            # between fields
 SECTION_SPACING = 22    # between sections
 PADDING = 16            # inside a panel
-BUTTON_H = 42           # every normal button
-COMPACT_H = 32          # toolbar buttons
+BUTTON_H = 38           # every normal button
+COMPACT_H = 28          # toolbar buttons
 LABEL_W = 224           # label column - fits the longest label at this size
 NUMBER_W = 128          # numeric entry fields
 POPUP_ITEMS = 12        # rows a dropdown shows before it scrolls
 
 FONT_LABEL = THEME["font_size_small"]
+FONT_BUTTON = THEME["font_size_button"]   # buttons only; labels keep FONT_LABEL
 FONT_HINT = THEME["font_size_tiny"]
 FONT_VALUE = THEME["font_size_small"]
 
@@ -59,10 +63,10 @@ FONT_VALUE = THEME["font_size_small"]
 
 def heading(text):
     """A section title."""
-    w = QLabel(text.upper())
+    w = QLabel(text[:1].upper() + text[1:].lower() if text.isupper() else text)
     w.setStyleSheet(
-        f"color:{THEME['text_muted']}; font-size:{FONT_HINT}; font-weight:700; "
-        f"letter-spacing:2px; background:transparent; font-family:{THEME['font_code']};")
+        f"color:{THEME['text_secondary']}; font-size:{FONT_LABEL}; font-weight:600; "
+        f"background:transparent; font-family:{THEME['font_ui']};")
     return w
 
 
@@ -71,7 +75,7 @@ def label(text):
     w = QLabel(text)
     w.setStyleSheet(
         f"color:{THEME['text_secondary']}; font-size:{FONT_LABEL}; "
-        f"font-weight:600; background:transparent;")
+        f"font-weight:400; background:transparent;")
     return w
 
 
@@ -92,7 +96,7 @@ def value_label(text="", width=88):
     w.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     w.setStyleSheet(
         f"color:{THEME['text_primary']}; font-size:{FONT_VALUE}; "
-        f"font-weight:700; background:transparent;")
+        f"font-weight:400; background:transparent;")
     return w
 
 
@@ -184,7 +188,7 @@ def _input_css(widget_name):
         f"  color:{THEME['text_primary']}; "
         f"  border:{THEME['border_width']} solid {THEME['bg_input_border']}; "
         f"  border-radius:{THEME['radius_sm']}; padding:5px 8px; "
-        f"  font-family:{THEME['font_code']}; font-size:{FONT_LABEL}; "
+        f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
         f"  selection-background-color:{THEME['accent_primary']}; }}"
         f"{widget_name}:focus {{ border:{THEME['border_width']} solid "
         f"  {THEME['accent_primary']}; }}"
@@ -248,18 +252,46 @@ def _combo_css():
         f"QComboBox QAbstractItemView {{ background:{THEME['bg_panel']}; "
         f"  color:{THEME['text_primary']}; "
         f"  selection-background-color:{THEME['accent_primary']}; "
-        f"  selection-color:{THEME['bg_main']}; outline:none; "
+        f"  selection-color:{THEME['text_on_accent']}; outline:none; "
         f"  border:{THEME['border_width']} solid {THEME['bg_border']}; }}"
         f"QComboBox QAbstractItemView::item {{ min-height:{BUTTON_H - 12}px; "
         f"  padding:2px 8px; }}"
         f"QComboBox QAbstractScrollArea QScrollBar:vertical {{ "
         f"  background:{THEME['bg_panel']}; width:12px; border:none; }}"
         f"QComboBox QAbstractScrollArea QScrollBar::handle:vertical {{ "
-        f"  background:{THEME['bg_border']}; border-radius:0; min-height:24px; }}")
+        f"  background:{THEME['bg_border_strong']}; border-radius:4px; min-height:24px; }}")
+
+
+class Dropdown(QComboBox):
+    """A QComboBox that keeps keyboard focus after you pick from its list.
+
+    Picking an item fires on_change, which redraws the previews; on some
+    platforms that leaves focus somewhere else, so the arrow keys stop
+    stepping through the choices. Taking focus back once the list has closed
+    makes click-then-arrow work everywhere.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        # Size from a short minimum, not the longest entry: one long label
+        # ("Militia - upright, martial  ·  HUMANS_MILITIA.MDS") would otherwise
+        # set the width of the whole page and, through it, the window.
+        self.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.setMinimumContentsLength(14)
+
+    def hidePopup(self):
+        super().hidePopup()
+        QTimer.singleShot(0, self._refocus)
+
+    def _refocus(self):
+        if self.isVisible() and self.isEnabled():
+            self.setFocus(Qt.FocusReason.PopupFocusReason)
 
 
 def dropdown(items, value=None, on_change=None):
-    w = QComboBox()
+    w = Dropdown()
     w.addItems([str(i) for i in items])
     w.setMinimumHeight(BUTTON_H)
     w.setMaxVisibleItems(POPUP_ITEMS)
@@ -299,11 +331,11 @@ def slider(lo, hi, value, on_change, fmt=str, width=88):
     bar.setValue(value)
     bar.setStyleSheet(
         f"QSlider::groove:horizontal {{ background:{THEME['bg_input_border']}; "
-        f"  height:3px; border-radius:0; }}"
+        f"  height:4px; border-radius:2px; }}"
         f"QSlider::sub-page:horizontal {{ background:{THEME['accent_primary']}; "
-        f"  height:3px; border-radius:0; }}"
+        f"  height:4px; border-radius:2px; }}"
         f"QSlider::handle:horizontal {{ background:{THEME['accent_primary']}; "
-        f"  width:12px; height:12px; margin:-5px 0; border-radius:0; }}"
+        f"  width:14px; height:14px; margin:-5px 0; border-radius:7px; }}"
         f"QSlider::handle:horizontal:disabled {{ "
         f"  background:{THEME['bg_border']}; }}")
 
@@ -316,6 +348,38 @@ def slider(lo, hi, value, on_change, fmt=str, width=88):
     holder.slider = bar
     holder.readout = out
     return holder
+
+
+def time_input(hour, minute, on_change, width=NUMBER_W):
+    """A clock time, HH:MM. on_change gets (hour, minute)."""
+    w = QTimeEdit(QTime(int(hour) % 24, int(minute) % 60))
+    w.setDisplayFormat("HH:mm")
+    w.setFixedWidth(width)
+    w.setMinimumHeight(BUTTON_H)
+    w.setButtonSymbols(QTimeEdit.ButtonSymbols.NoButtons)
+    w.setStyleSheet(
+        _input_css("QTimeEdit")
+        + "QTimeEdit::up-button, QTimeEdit::down-button "
+          "{ subcontrol-origin:border; width:0; }")
+    w.timeChanged.connect(lambda t: on_change(t.hour(), t.minute()))
+    return w
+
+
+def card():
+    """A softly framed group inside a page, e.g. one routine entry.
+
+    Returns (frame, its QVBoxLayout).
+    """
+    frame = QFrame()
+    frame.setObjectName("card")
+    frame.setStyleSheet(
+        f"QFrame#card {{ background:{THEME['bg_panel']}; "
+        f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
+        f"  border-radius:{THEME['radius_md']}; }}")
+    lay = QVBoxLayout(frame)
+    lay.setContentsMargins(PADDING, GAP + 4, PADDING, 0)
+    lay.setSpacing(0)
+    return frame, lay
 
 
 def spin(lo, hi, value, on_change, suffix="", width=110):
@@ -333,8 +397,8 @@ def checkbox(text, checked=False, on_change=None, tooltip="", compact=False):
         f"QCheckBox {{ color:{THEME['text_secondary']}; "
         f"  font-size:{FONT_LABEL}; spacing:4px; background:transparent; }}"
         f"QCheckBox::indicator {{ width:14px; height:14px; "
-        f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
-        f"  border-radius:0; background:{THEME['bg_input']}; }}"
+        f"  border:{THEME['border_width']} solid {THEME['bg_border_strong']}; "
+        f"  border-radius:3px; background:{THEME['bg_input']}; }}"
         f"QCheckBox::indicator:checked {{ background:{THEME['accent_primary']}; "
         f"  border-color:{THEME['accent_primary']}; }}"
         f"QCheckBox:disabled {{ color:{THEME['text_muted']}; }}")
@@ -365,7 +429,7 @@ def radio_row(text, options, value, on_change):
     css = (f"QRadioButton {{ color:{THEME['text_secondary']}; "
            f"  font-size:{FONT_LABEL}; spacing:4px; background:transparent; }}"
            f"QRadioButton::indicator {{ width:12px; height:12px; "
-           f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
+           f"  border:{THEME['border_width']} solid {THEME['bg_border_strong']}; "
            f"  border-radius:6px; background:{THEME['bg_input']}; }}"
            f"QRadioButton::indicator:checked {{ "
            f"  background:{THEME['accent_primary']}; "
@@ -393,12 +457,12 @@ def _list_css(widget_name):
         f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; }}"
         f"{widget_name}::item {{ padding:5px 6px; }}"
         f"{widget_name}::item:selected {{ background:{THEME['accent_primary']}; "
-        f"  color:{THEME['bg_main']}; }}"
+        f"  color:{THEME['text_on_accent']}; }}"
         f"{widget_name}::item:hover {{ background:{THEME['bg_bar']}; }}"
         f"QScrollBar:vertical {{ background:{THEME['bg_panel']}; width:8px; "
         f"  border:none; }}"
-        f"QScrollBar::handle:vertical {{ background:{THEME['bg_border']}; "
-        f"  border-radius:0; }}"
+        f"QScrollBar::handle:vertical {{ background:{THEME['bg_border_strong']}; "
+        f"  border-radius:4px; }}"
         f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ "
         f"  height:0; }}")
 
@@ -429,25 +493,25 @@ def bold_font():
 PRIMARY, DEFAULT, SUBTLE, DANGER = "primary", "default", "subtle", "danger"
 
 _VARIANTS = {
-    PRIMARY: ("accent_primary", "bg_main", "accent_hover"),
+    PRIMARY: ("accent_primary", "text_on_accent", "accent_hover"),
     DEFAULT: ("bg_panel", "text_primary", "bg_hover"),
     SUBTLE: ("bg_main", "text_muted", "bg_hover"),
-    DANGER: ("accent_gold", "bg_main", "accent_hover"),
+    DANGER: ("accent_gold", "text_on_accent", "accent_hover"),
 }
 
 
 def _button_css(variant, height):
     bg, fg, hover = _VARIANTS.get(variant, _VARIANTS[DEFAULT])
     solid = variant in (PRIMARY, DANGER)
-    edge = THEME[bg] if solid else THEME['bg_border']
+    edge = THEME[bg] if solid else THEME['bg_input_border']
     return (
         f"QPushButton {{ background:{THEME[bg]}; color:{THEME[fg]}; "
         f"  border:{THEME['border_width']} solid {edge}; "
-        f"  border-radius:{THEME['radius_sm']}; padding:0 12px; "
-        f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
-        f"  font-weight:600; min-height:{height}px; }}"
+        f"  border-radius:{THEME['radius_sm']}; padding:0 10px; "
+        f"  font-family:{THEME['font_ui']}; font-size:{FONT_BUTTON}; "
+        f"  font-weight:400; min-height:{height}px; }}"
         f"QPushButton:hover {{ background:{THEME[hover]}; "
-        f"  border-color:{THEME[hover] if solid else THEME['bg_border']}; "
+        f"  border-color:{THEME[hover] if solid else THEME['bg_border_strong']}; "
         f"  color:{THEME[fg] if solid else THEME['text_primary']}; }}"
         f"QPushButton:disabled {{ color:{THEME['text_muted']}; "
         f"  background:{THEME['bg_panel']}; }}")
@@ -476,35 +540,48 @@ def _small_button_css(color_key, height=COMPACT_H):
         f"QPushButton {{ background:{THEME['bg_bar']}; color:{THEME[color_key]}; "
         f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
         f"  border-radius:{THEME['radius_sm']}; padding:0 10px; "
-        f"  font-size:{FONT_LABEL}; font-weight:600; min-height:{height}px; }}"
+        f"  font-size:{FONT_BUTTON}; font-weight:400; min-height:{height}px; }}"
         f"QPushButton:hover {{ background:{THEME['bg_hover']}; "
         f"  color:{THEME['text_primary']}; }}")
 
 
-SS = {
-    "field": _input_css("QLineEdit"),
-    "field_readonly": (
-        f"QLineEdit {{ background:{THEME['bg_panel']}; color:{THEME['text_muted']}; "
-        f"  border:{THEME['border_width']} solid {THEME['bg_input_border']}; "
-        f"  border-radius:{THEME['radius_sm']}; padding:5px 8px; "
-        f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
-        f"  font-style:italic; }}"),
-    "combo": _combo_css(),
-    "spin": _input_css("QSpinBox"),
-    "check": (
-        f"QCheckBox {{ color:{THEME['text_secondary']}; font-size:{FONT_LABEL}; "
-        f"  spacing:4px; background:transparent; }}"
-        f"QCheckBox::indicator {{ width:14px; height:14px; "
-        f"  border:{THEME['border_width']} solid {THEME['bg_border']}; "
-        f"  border-radius:0; background:{THEME['bg_input']}; }}"
-        f"QCheckBox::indicator:checked {{ background:{THEME['accent_primary']}; "
-        f"  border-color:{THEME['accent_primary']}; }}"),
-    "add_btn": _small_button_css("accent_primary"),
-    "rm_btn": (
-        f"QPushButton {{ background:transparent; color:{THEME['text_muted']}; "
-        f"  border:none; font-size:{FONT_LABEL}; }}"
-        f"QPushButton:hover {{ color:{THEME['accent_primary']}; }}"),
-}
+def _build_ss():
+    return {
+        "field": _input_css("QLineEdit"),
+        "field_readonly": (
+            f"QLineEdit {{ background:{THEME['bg_panel']}; color:{THEME['text_muted']}; "
+            f"  border:{THEME['border_width']} solid {THEME['bg_input_border']}; "
+            f"  border-radius:{THEME['radius_sm']}; padding:5px 8px; "
+            f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
+            f"  font-style:italic; }}"),
+        "combo": _combo_css(),
+        "spin": _input_css("QSpinBox"),
+        "check": (
+            f"QCheckBox {{ color:{THEME['text_secondary']}; font-size:{FONT_LABEL}; "
+            f"  spacing:4px; background:transparent; }}"
+            f"QCheckBox::indicator {{ width:14px; height:14px; "
+            f"  border:{THEME['border_width']} solid {THEME['bg_border_strong']}; "
+            f"  border-radius:3px; background:{THEME['bg_input']}; }}"
+            f"QCheckBox::indicator:checked {{ background:{THEME['accent_primary']}; "
+            f"  border-color:{THEME['accent_primary']}; }}"),
+        "add_btn": _small_button_css("accent_primary"),
+        "rm_btn": (
+            f"QPushButton {{ background:transparent; color:{THEME['text_muted']}; "
+            f"  border:none; font-size:{FONT_LABEL}; }}"
+            f"QPushButton:hover {{ color:{THEME['accent_primary']}; }}"),
+    }
+
+
+# Rebuilt in place when the theme changes, so `from ui import SS` stays live.
+SS = _build_ss()
+
+
+def _rebuild_ss():
+    SS.clear()
+    SS.update(_build_ss())
+
+
+theme.on_change(_rebuild_ss)
 
 
 def placeholder(text):
@@ -512,7 +589,7 @@ def placeholder(text):
     w = QLabel(text)
     w.setAlignment(Qt.AlignmentFlag.AlignCenter)
     w.setStyleSheet(
-        f"color:{THEME['bg_border']}; font-size:{THEME['font_size_placeholder']}; "
+        f"color:{THEME['text_muted']}; font-size:{THEME['font_size_placeholder']}; "
         f"font-family:{THEME['font_ui']}; font-style:italic; background:transparent;")
     return w
 
@@ -531,6 +608,26 @@ def image_frame(height, text=""):
 
 
 # --- the shared page frame ----------------------------------------------------
+
+class _PageScroll(QScrollArea):
+    """Scrolls a page vertically only, and asks for the page's full width so
+    nothing is clipped at the right edge; height is what is free to scroll."""
+
+    def _width(self):
+        # Asking for the page's full width made the whole window unshrinkable;
+        # a narrow window scrolls the page sideways instead.
+        return 320
+
+    def minimumSizeHint(self):
+        hint = super().minimumSizeHint()
+        hint.setWidth(max(hint.width(), self._width()))
+        return hint
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        hint.setWidth(max(hint.width(), self._width()))
+        return hint
+
 
 class SideTabs(QWidget):
     """Tabs down the left edge: a hard-ruled list beside a stack of pages.
@@ -554,14 +651,16 @@ class SideTabs(QWidget):
             f"QListWidget {{ background:{THEME['bg_panel']}; border:none; "
             f"  border-right:{THEME['border_width']} solid {THEME['bg_border']}; "
             f"  outline:none; padding:10px 8px; "
-            f"  font-family:{THEME['font_ui']}; font-size:{FONT_LABEL}; "
-            f"  font-weight:600; }}"
-            f"QListWidget::item {{ padding:8px 10px; margin-bottom:2px; "
-            f"  color:{THEME['text_muted']}; }}"
+            f"  font-family:{THEME['font_ui']}; font-size:{THEME['font_size_scene']}; "
+            f"  font-weight:400; }}"
+            f"QListWidget::item {{ padding:7px 10px; margin-bottom:2px; "
+            f"  color:{THEME['text_muted']}; border-radius:{THEME['radius_sm']}; }}"
             f"QListWidget::item:hover {{ color:{THEME['text_primary']}; "
-            f"  background:transparent; }}"
-            f"QListWidget::item:selected {{ background:{THEME['text_primary']}; "
-            f"  color:{THEME['bg_main']}; }}")
+            f"  background:{THEME['bg_hover']}; }}"
+            # A quiet accent tint, not an inverted block: it says "you are
+            # here" without being the loudest thing on screen.
+            f"QListWidget::item:selected {{ background:{THEME['accent_soft']}; "
+            f"  color:{THEME['text_primary']}; }}")
         self._stack = QStackedWidget()
         lay.addWidget(self._list)
         lay.addWidget(self._stack, 1)
@@ -585,8 +684,16 @@ class SideTabs(QWidget):
             page_.deleteLater()
 
     def addTab(self, widget, title):
+        # Each page scrolls on its own, so a page that grows (another routine,
+        # a long inventory) adds a scroll bar instead of stretching the window.
+        scroll = _PageScroll()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setStyleSheet("QScrollArea { border:none; background:transparent; }")
+        scroll.setWidget(widget)
         self._list.addItem(title)
-        self._stack.addWidget(widget)
+        self._stack.addWidget(scroll)
         if self._list.currentRow() < 0:
             self._list.setCurrentRow(0)
 
@@ -594,7 +701,9 @@ class SideTabs(QWidget):
         return self._stack.count()
 
     def widget(self, index):
-        return self._stack.widget(index)
+        """The page itself, not the scroll area around it."""
+        scroll = self._stack.widget(index)
+        return scroll.widget() if scroll is not None else None
 
     def tabText(self, index):
         return self._list.item(index).text()
@@ -630,19 +739,26 @@ class SidePanel(QWidget):
         col.addWidget(rule)
 
         self.status = hint("")
+        # A long path in the status line must not set the panel's minimum width.
+        self.status.setWordWrap(True)
+        self.status.setMinimumWidth(0)
         col.addWidget(self.status)
 
+        # Two rows so the panel can be narrow: the secondary actions on top, the
+        # one that writes into the mod across the full width below.
         actions = row()
         actions.addWidget(button("Validate", on_validate, DEFAULT,
-                                 "Check every identifier against Content/"))
+                                 "Check every identifier against Content/", compact=True))
         actions.addWidget(button("Save as...", on_save_as, DEFAULT,
-                                 "Save somewhere other than the mod"))
+                                 "Save somewhere other than the mod", compact=True))
         if on_open:
             actions.addWidget(button("Open...", on_open, DEFAULT,
-                                     "Load a saved .d file back into the editor"))
+                                     "Load a saved .d file back into the editor",
+                                     compact=True))
         actions.addStretch()
-        actions.addWidget(button("Save to mod", on_save, PRIMARY, save_tip))
         col.addLayout(actions)
+        self.save_btn = button("Save to mod", on_save, PRIMARY, save_tip)
+        col.addWidget(self.save_btn)
 
     def add_tab(self, widget, title):
         self.tabs.addTab(widget, title)
@@ -655,14 +771,29 @@ class SidePanel(QWidget):
         self.status.setText(text)
 
 
-def page(work_area, side_panel, work_stretch=3, side_stretch=2, left=PADDING):
-    """A whole page: what you edit on the left, what you get on the right."""
+def page(work_area, side_panel, work_stretch=7, side_stretch=3, left=PADDING):
+    """A whole page: what you edit on the left, what you get on the right.
+
+    The two halves sit in a splitter, so the script panel can be dragged wider
+    or narrower.
+    """
     holder = QWidget()
     lay = QHBoxLayout(holder)
     lay.setContentsMargins(left, 0, PADDING, PADDING)
-    lay.setSpacing(PADDING)
-    lay.addWidget(work_area, work_stretch)
-    lay.addWidget(side_panel, side_stretch)
+    split = QSplitter(Qt.Orientation.Horizontal)
+    split.setHandleWidth(PADDING)
+    split.setChildrenCollapsible(False)
+    split.addWidget(work_area)
+    split.addWidget(side_panel)
+    split.setStretchFactor(0, work_stretch)
+    split.setStretchFactor(1, side_stretch)
+    # Never let a drag squeeze a panel below what its own buttons need.
+    work_area.setMinimumWidth(max(work_area.minimumSizeHint().width(), 360))
+    side_panel.setMinimumWidth(max(side_panel.minimumSizeHint().width(), 300))
+    total = work_stretch + side_stretch
+    split.setSizes([1000 * work_stretch // total, 1000 * side_stretch // total])
+    lay.addWidget(split)
+    holder.splitter = split
     return holder
 
 
@@ -680,6 +811,33 @@ def report_omissions(parent, title, notes, limit=25):
         f"and will not be written back:{chr(10)}{chr(10)}{shown}{more}")
 
 
+def side_panel_icon(panel_shown, size=18):
+    """The 'show / hide the right panel' glyph: a window outline with a divider
+    near the right edge, the right pane filled while the panel is shown."""
+    from PyQt6.QtCore import QRectF
+    ratio = 2
+    pm = QPixmap(size * ratio, size * ratio)
+    pm.setDevicePixelRatio(ratio)
+    pm.fill(Qt.GlobalColor.transparent)
+    color = QColor(THEME["text_secondary"])
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(color, 1.4))
+    box = QRectF(1.5, 3, size - 3, size - 6)
+    p.drawRoundedRect(box, 3, 3)
+    split_x = box.right() - box.width() * 0.36
+    p.drawLine(int(split_x), int(box.top()), int(split_x), int(box.bottom()))
+    if panel_shown:
+        fill = QColor(color)
+        fill.setAlpha(110)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(fill)
+        p.drawRoundedRect(QRectF(split_x + 1, box.top() + 1.5,
+                                 box.right() - split_x - 2.5, box.height() - 3), 1.5, 1.5)
+    p.end()
+    return QIcon(pm)
+
+
 def code_view_css(size=None):
     """The read-only script preview."""
     size = size or THEME["font_size_code"]
@@ -695,8 +853,8 @@ class CodeView(QTextEdit):
 
     Every panel shares one text size, so zooming the NPC script also zooms the
     dialog script - you set the size you can read once. The size lives in the
-    stylesheet (which beats setFont), so QTextEdit's own zoomIn has no effect
-    and zooming re-applies the stylesheet instead.
+    stylesheet (which beats setFont), so zooming re-applies the stylesheet - on
+    the next event-loop turn, never from inside the wheel event itself.
     """
     MIN_SIZE, MAX_SIZE = 6, 36
     _size = THEME["font_size_code"]
@@ -705,9 +863,14 @@ class CodeView(QTextEdit):
     def __init__(self, font=None):
         super().__init__()
         self.setReadOnly(True)
+        # Code wrapped mid-statement is unreadable; scroll sideways instead.
+        self.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         if font is not None:
             self.setFont(font)
         CodeView._views.add(self)
+        self._apply_size()
+
+    def _apply_size(self):
         self.setStyleSheet(code_view_css(CodeView._size))
 
     @classmethod
@@ -717,13 +880,20 @@ class CodeView(QTextEdit):
             return
         cls._size = size
         for view in list(cls._views):
-            view.setStyleSheet(code_view_css(size))
+            try:
+                view._apply_size()
+            except Exception:
+                # The widget was deleted on the Qt side (e.g. the NPC tabs were
+                # rebuilt). An exception escaping a Qt event handler kills the app.
+                cls._views.discard(view)
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             step = event.angleDelta().y()
             if step:
-                CodeView.set_size(CodeView._size + (1 if step > 0 else -1))
+                # Next event-loop turn, not inside this wheel event.
+                delta = 1 if step > 0 else -1
+                QTimer.singleShot(0, lambda: CodeView.set_size(CodeView._size + delta))
             event.accept()
             return
         super().wheelEvent(event)

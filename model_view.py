@@ -31,7 +31,10 @@ import ui
 from theme import THEME
 
 FRONT = 180.0            # the meshes face away from the camera at yaw 0
-MIN_ZOOM, MAX_ZOOM = 0.35, 8.0
+MIN_ZOOM, MAX_ZOOM = 1.0, 8.0      # 1.0 is the default, whole-figure view
+#: Zoom at which the face is fully centred; below it the view eases from the
+#: whole figure towards the face, so zooming in heads for the face.
+FACE_ZOOM = 2.5
 
 #: While dragging, render roughly this many pixels regardless of how big the
 #: panel is, so turning the figure stays smooth on a maximised window.
@@ -89,6 +92,7 @@ class ModelView(QWidget):
         self._drag = None
         self._last_key = None
         self._models = None
+        self._bounds = None
 
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -127,6 +131,12 @@ class ModelView(QWidget):
 
     def zoom_by(self, factor):
         self.zoom = max(MIN_ZOOM, min(MAX_ZOOM, self.zoom * factor))
+        # Zooming re-aims at the face (and back at the whole figure as you
+        # zoom out to the default), replacing any manual pan.
+        t = min(1.0, (self.zoom - 1.0) / (FACE_ZOOM - 1.0))
+        fx, fy = self._face_pan()
+        self.pan = [fx * t, fy * t]
+        self._clamp_pan()
         self.render_now(scale=self._drag_scale())
         self._timer.start(140)
 
@@ -172,12 +182,49 @@ class ModelView(QWidget):
         else:
             self.pan[0] += dx
             self.pan[1] += dy
+            self._clamp_pan()
         self.render_now(scale=self._drag_scale())
 
     def end_drag(self, _event):
         self._drag = None
         self.canvas.setCursor(Qt.CursorShape.OpenHandCursor)
         self.render_now()
+
+    def _clamp_pan(self):
+        """Keep panning within the figure.
+
+        Zoomed out, the figure can slide until its edge meets the panel edge
+        but never off it; zoomed in, the panel can roam over the figure but
+        never past its edge into empty space. Both are |panel/2 - figure/2|.
+        """
+        if self._bounds is None:
+            return
+        w, h = self._canvas_size()
+        half_w, half_h = self._bounds[:2]
+        scale = render3d.fit_scale(half_w, half_h, w, h, zoom=self.zoom)
+        fx, fy = self._face_pan()
+        # ...and always far enough to put the face in the middle.
+        lim_x = max(abs(w / 2 - half_w * scale), abs(fx))
+        lim_y = max(abs(h / 2 - half_h * scale), abs(fy))
+        self.pan[0] = max(-lim_x, min(lim_x, self.pan[0]))
+        self.pan[1] = max(-lim_y, min(lim_y, self.pan[1]))
+
+    def _canvas_size(self):
+        area = self.canvas.size()
+        return max(1, area.width()), max(1, area.height())
+
+    def _face_pan(self):
+        """The pan that puts the face in the middle at the current zoom."""
+        if self._bounds is None and self._models is None:
+            self._get_models()
+        if not self._bounds or self._bounds[3] is None:
+            return 0.0, 0.0
+        half_w, half_h, centre, face = self._bounds
+        w, h = self._canvas_size()
+        scale = render3d.fit_scale(half_w, half_h, w, h, zoom=self.zoom)
+        dx, dy, _ = render3d.rotate(
+            [face[i] - centre[i] for i in range(3)], self.yaw, self.pitch)
+        return -dx * scale, dy * scale
 
     def _drag_scale(self):
         """Shrink the drag frame to a fixed pixel budget, never enlarge it."""
@@ -186,6 +233,7 @@ class ModelView(QWidget):
         return min(1.0, (DRAG_TARGET_PIXELS / pixels) ** 0.5)
 
     def on_resize(self):
+        self._clamp_pan()
         self._resize_timer.start()
 
     # -------------------------------------------------------------- redrawing
@@ -197,6 +245,7 @@ class ModelView(QWidget):
         """The model changed while we were hidden; redraw when shown again."""
         self._last_key = None
         self._models = None
+        self._bounds = None
 
     def refresh(self):
         key = self._look_key()
@@ -204,11 +253,14 @@ class ModelView(QWidget):
             return
         self._last_key = key
         self._models = None
+        self._bounds = None
         self._timer.start()
 
     def _get_models(self):
         if self._models is None:
             self._models = render3d.character(self.npc)
+            self._bounds = render3d.bounds(self._models) if self._models else None
+            self._clamp_pan()
         return self._models
 
     def render_now(self, scale=1.0):

@@ -78,6 +78,20 @@ def _mtime(path):
                + [f.stat().st_mtime for f in path.rglob("*") if f.is_file()])
 
 
+def _stamp_version(app):
+    """Put the release number in the .app's Info.plist (Finder's Get Info shows it)."""
+    import plistlib
+    from version import VERSION
+    plist = app / "Contents" / "Info.plist"
+    try:
+        info = plistlib.loads(plist.read_bytes())
+        info["CFBundleShortVersionString"] = VERSION
+        info["CFBundleVersion"] = VERSION
+        plist.write_bytes(plistlib.dumps(info))
+    except (OSError, ValueError) as exc:
+        print(f"warning: could not stamp the version into Info.plist ({exc})")
+
+
 def main():
     out = artifact()
     before = _mtime(out)
@@ -144,6 +158,7 @@ def main():
         stray = DIST / NAME
         if stray.is_file():
             stray.unlink()
+        _stamp_version(out)
         print("Unsigned: first launch needs right-click > Open, or\n"
               f"  xattr -dr com.apple.quarantine '{out}'")
 

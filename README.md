@@ -48,6 +48,16 @@ The saved folder lives in `%APPDATA%\GothicStudio\config.json` on Windows,
 `~/Library/Application Support/GothicStudio/config.json` on macOS, and
 `~/.config/GothicStudio/config.json` elsewhere. Delete it to be asked again.
 
+**Dark mode:** click **Dark mode** (or **Light mode**) in the status bar. The
+window switches at once and keeps whatever you have open; the choice is saved in
+the same `config.json` (`"theme": "dark"`) for next time.
+
+**Routines:** the Routine tab holds a list of routines, each a time range
+(HH:MM to HH:MM) with its own activity and waypoint, written as one `TA_` line
+each. **+ Add routine** fills the first free time, or splits the last routine
+when the day is full. The line under the list (and **Validate**) points out
+gaps, where the NPC would have nothing to do, and overlaps.
+
 The status bar always shows the path actually in use.
 
 ```
@@ -128,7 +138,7 @@ Plus:
 | `model_view.py` | The draggable 3D panel on the NPC page. |
 | `fastpath.py` | Optional numpy acceleration. Absent numpy, everything still works. |
 | `benchmark.py` | Proves whether numpy actually helps, stage by stage. |
-| `theme.py` | All colours, fonts, sizes. Nothing else hardcodes a colour. |
+| `theme.py` | All colours (light and dark palettes), fonts, sizes. Nothing else hardcodes a colour. |
 | `npc_model.py` | The `Npc` object - one flat list of fields. |
 | `npc_gen.py` | `Npc` -> `.d` text, plus `validate()`. |
 | `startup_gen.py` | Adds/removes `Wld_InsertNpc` lines in `Story/Startup.d` (the Routine tab's Spawn section). |

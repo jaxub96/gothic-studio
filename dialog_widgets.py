@@ -23,6 +23,7 @@ from PyQt6.QtCore import Qt, QTimer, QMimeData
 from PyQt6.QtGui import QDrag
 
 from theme import THEME
+import ui
 from ui import SS
 from dialog_gen import (
     DialogLine,
@@ -205,15 +206,15 @@ class ChatBubble(QFrame, _DropTargetMixin):
 
         tag = QLabel(speaker_display_name(line.speaker))
         tag.setStyleSheet(
-            f"color:{fg}; background:transparent; font-weight:700; "
-            f"font-size:{THEME['font_size_tiny']}; letter-spacing:1px;"
+            f"color:{fg}; background:transparent; font-weight:600; "
+            f"font-size:12px; letter-spacing:1px;"
         )
 
         self.text_lbl = QLabel(line.text)
         self.text_lbl.setWordWrap(True)
         self.text_lbl.setStyleSheet(
             f"color:{fg}; background:transparent; font-family:{THEME['font_ui']}; "
-            f"font-size:{THEME['font_size_ui']};"
+            f"font-size:{THEME['font_size_chat']};"
         )
         self.text_lbl.setMaximumWidth(440)
         self.text_lbl.setCursor(Qt.CursorShape.IBeamCursor)
@@ -224,7 +225,7 @@ class ChatBubble(QFrame, _DropTargetMixin):
         self.text_edit.setStyleSheet(
             f"QLineEdit {{ background:{THEME['bg_input']}; color:{THEME['text_primary']}; "
             f"border:{THEME['border_width']} solid {THEME['accent_primary']}; "
-            f"border-radius:{THEME['radius_sm']}; padding:4px 6px; font-size:{THEME['font_size_ui']}; }}"
+            f"border-radius:{THEME['radius_sm']}; padding:4px 6px; font-size:{THEME['font_size_chat']}; }}"
         )
         self.text_edit.setMaximumWidth(440)
         self.text_edit.hide()
@@ -306,6 +307,9 @@ class EffectBubble(QFrame, _DropTargetMixin):
 
         icon = self.ICONS.get(entry.kind, "•")
         lbl = QLabel(f"{icon}  {entry.summary()}")
+        # Wrap rather than widen: an unwrapped long condition pushed the whole
+        # chat column past its pane and clipped the line bubbles beside it.
+        lbl.setWordWrap(True)
         lbl.setStyleSheet(
             f"color:{THEME['text_secondary']}; background:transparent; "
             f"font-size:{THEME['font_size_small']}; font-style:italic;"
@@ -332,7 +336,7 @@ class EffectInsertRow(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(6)
 
-        self.kind_cmb = QComboBox()
+        self.kind_cmb = ui.Dropdown()
         self.kind_cmb.addItems(
             ["Give Item", "Take Item", "Give XP", "Change Routine", "Follow", "Stop Following", "Log Entry"]
         )
@@ -360,7 +364,7 @@ class EffectInsertRow(QWidget):
         self.topic_edit = QLineEdit()
         self.topic_edit.setPlaceholderText("Log topic  e.g. CH1_JoinPsi")
         self.topic_edit.setStyleSheet(SS["field"])
-        self.status_cmb = QComboBox()
+        self.status_cmb = ui.Dropdown()
         self.status_cmb.addItems(
             ["LOG_RUNNING", "LOG_SUCCESS", "LOG_FAILED", "LOG_NOTE"]
         )
@@ -480,9 +484,10 @@ class ChatLinesWidget(QWidget):
         self.scroll = QScrollArea()
         self.scroll.setWidget(self.chat_container)
         self.scroll.setWidgetResizable(True)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll.setMinimumHeight(220)
         self.scroll.setStyleSheet(
-            f"QScrollArea {{ border:none; "
+            f"QScrollArea {{ border:{THEME['border_width']} solid {THEME['bg_input_border']}; "
             f"border-radius:{THEME['radius_md']}; background:{THEME['bg_main']}; }}"
         )
         root.addWidget(self.scroll, 1)
@@ -517,8 +522,8 @@ class ChatLinesWidget(QWidget):
         self.speaker_btn.setText(speaker_display_name(self.current_speaker))
         color = THEME["accent_primary"] if is_hero else THEME["accent_secondary"]
         self.speaker_btn.setStyleSheet(
-            f"QPushButton {{ background:{color}; color:{THEME['bg_main']}; border:none; "
-            f"border-radius:{THEME['radius_md']}; font-weight:700; padding:7px 0; }}"
+            f"QPushButton {{ background:{color}; color:{THEME['text_on_accent']}; border:none; "
+            f"border-radius:{THEME['radius_md']}; font-weight:600; padding:7px 0; }}"
             f"QPushButton:hover {{ background:{THEME['accent_hover']}; }}"
         )
 
@@ -625,7 +630,7 @@ class ChoiceWidget(QFrame):
         self.label.setPlaceholderText("Choice shown to player…")
         self.label.setStyleSheet(
             f"QLineEdit {{ background:{THEME['bg_panel']}; color:{THEME['accent_hover']}; "
-            f"border:none; border-radius:2px; padding:4px 6px; font-weight:500; }}"
+            f"border:none; border-radius:2px; padding:4px 6px; font-weight:400; }}"
         )
         self.func = QLineEdit()
         self.func.setPlaceholderText("Handler func")
@@ -678,14 +683,14 @@ class BlockEditor(QWidget):
             w = QLabel(text)
             w.setFixedWidth(width)
             w.setStyleSheet(
-                f"color:{THEME['text_secondary']}; font-weight:600; font-size:{THEME['font_size_small']};"
+                f"color:{THEME['text_secondary']}; font-weight:400; font-size:{THEME['font_size_small']};"
             )
             return w
 
         if self.is_followup:
             hint = QLabel("↳  Follow-up scene, shown after a choice is picked")
             hint.setStyleSheet(
-                f"color:{THEME['accent_secondary']}; font-weight:600; "
+                f"color:{THEME['accent_secondary']}; font-weight:400; "
                 f"font-size:{THEME['font_size_small']}; padding-bottom:2px;"
             )
             root.addWidget(hint)
@@ -713,11 +718,10 @@ class BlockEditor(QWidget):
         # Chat and choices live in a vertical splitter so either panel can be
         # dragged bigger or smaller to suit the scene being edited.
         dialog_splitter = QSplitter(Qt.Orientation.Vertical)
-        dialog_splitter.setHandleWidth(7)
+        dialog_splitter.setHandleWidth(8)   # a quiet gap, not a draggable bar
         dialog_splitter.setChildrenCollapsible(False)
         dialog_splitter.setStyleSheet(
             f"QSplitter::handle {{ background:{THEME['bg_main']}; }}"
-            f"QSplitter::handle:hover {{ background:{THEME['accent_primary']}; }}"
         )
 
         self.chat = ChatLinesWidget(on_change=self._emit)
@@ -755,6 +759,7 @@ class BlockEditor(QWidget):
         dialog_splitter.setStretchFactor(0, 3)
         dialog_splitter.setStretchFactor(1, 1)
         dialog_splitter.setSizes([420, 190])
+        dialog_splitter.handle(1).setEnabled(False)     # fixed split: nothing to drag
 
         dt.addWidget(dialog_splitter, 1)
 
@@ -918,7 +923,7 @@ class BlockListItem(QFrame):
         self._active = False
         self.is_followup = is_followup
         self.depth = depth
-        self.setFixedHeight(34)
+        self.setFixedHeight(32)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         lay = QHBoxLayout(self)
         left_margin = 18 + (self.depth * 16) if self.is_followup else 10 + (self.depth * 10)
@@ -933,21 +938,22 @@ class BlockListItem(QFrame):
         self._update_style()
 
     def _update_style(self):
+        # Same states as the NPC tab's list: quiet text, a hover tint, and an
+        # accent tint for the row you are on.
         if self._active:
-            self.setStyleSheet(
-                f"QFrame {{ background:{THEME['bg_bar']}; border:none; "
-                f"border-radius:0; margin:0px; }}"
-            )
-            self.lbl.setStyleSheet(
-                f"color:{THEME['accent_hover']}; font-weight:700; font-size:{THEME['font_size_ui']};"
-            )
+            bg, color, weight = THEME["accent_soft"], THEME["text_primary"], 600
         else:
-            self.setStyleSheet(
-                f"QFrame {{ background:{THEME['bg_panel']}; border:none; "
-                f"border-radius:0; margin:0px; }}"
-            )
-            color = THEME["text_muted"] if self.is_followup else THEME["text_secondary"]
-            self.lbl.setStyleSheet(f"color:{color}; font-size:{THEME['font_size_ui']};")
+            bg = "transparent"
+            color = THEME["text_muted"]
+            weight = 400
+        self.setStyleSheet(
+            f"BlockListItem {{ background:{bg}; border:none; "
+            f"border-radius:{THEME['radius_sm']}; }}"
+            f"BlockListItem:hover {{ background:"
+            f"{THEME['accent_soft'] if self._active else THEME['bg_hover']}; }}")
+        self.lbl.setStyleSheet(
+            f"color:{color}; font-weight:{weight}; background:transparent; "
+            f"font-size:{THEME['font_size_scene']};")
 
     def set_active(self, v):
         self._active = v

@@ -151,6 +151,68 @@ def render(models, width=320, height=460, yaw=25.0, pitch=8.0,
     return width, height, small.tobytes()
 
 
+def bounds(models):
+    """The world framing of `models`, as _render uses it.
+
+    Returns (half_w, half_h, centre, face) or None when there is nothing to
+    draw. half_w takes the wider of X and Z, so it does not change as the
+    figure turns. `face` is the centre of the head mesh (the only model
+    placed by a matrix), or None without one.
+    """
+    lo, hi = [math.inf] * 3, [-math.inf] * 3
+    hlo, hhi = [math.inf] * 3, [-math.inf] * 3
+    for model in models:
+        is_head = model.matrix is not None
+        if not model.mesh:
+            continue
+        off = model.offset
+        pos = model.mesh.positions
+        if model.matrix:
+            import mesh as _mesh
+            pos = [_mesh.transform_point(model.matrix, p) for p in pos]
+        source = model.submesh.triangles if model.submesh else model.mesh.triangles
+        for tri in source:
+            for w in tri:
+                if w[0] >= len(pos):
+                    continue
+                p = pos[w[0]]
+                for i in range(3):
+                    v = p[i] + off[i]
+                    if v < lo[i]:
+                        lo[i] = v
+                    if v > hi[i]:
+                        hi[i] = v
+                    if is_head:
+                        if v < hlo[i]:
+                            hlo[i] = v
+                        if v > hhi[i]:
+                            hhi[i] = v
+    if lo[0] == math.inf:
+        return None
+    half_h = max(hi[1] - lo[1], 1e-6) / 2
+    half_w = max(hi[0] - lo[0], hi[2] - lo[2], 1e-6) / 2
+    centre = tuple((lo[i] + hi[i]) / 2 for i in range(3))
+    face = (tuple((hlo[i] + hhi[i]) / 2 for i in range(3))
+            if hlo[0] != math.inf else None)
+    return half_w, half_h, centre, face
+
+
+def rotate(v, yaw, pitch):
+    """Turn a world vector the way _render turns the model."""
+    cy, sy = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
+    cp, sp = math.cos(math.radians(pitch)), math.sin(math.radians(pitch))
+    x, y, z = v
+    x, z = x * cy + z * sy, -x * sy + z * cy
+    y, z = y * cp - z * sp, y * sp + z * cp
+    return x, y, z
+
+
+def fit_scale(half_w, half_h, width, height, margin=0.06, zoom=1.0):
+    """Pixels per world unit that frame a box of this size, times zoom."""
+    return min(width * (1 - 2 * margin) / (2 * half_w),
+               height * (1 - 2 * margin) / (2 * half_h)) * zoom
+
+
 def _render(models, width, height, yaw, pitch, background, margin,
             zoom, pan, wireframe, textured):
     """One pass at exactly the size asked for. See `render`.
@@ -205,8 +267,7 @@ def _render(models, width, height, yaw, pitch, background, margin,
     half_h = max(max(wys) - min(wys), 1e-6) / 2
     half_w = max(max(wxs) - min(wxs), max(wzs) - min(wzs), 1e-6) / 2
 
-    scale = min(width * (1 - 2 * margin) / (2 * half_w),
-                height * (1 - 2 * margin) / (2 * half_h)) * zoom
+    scale = fit_scale(half_w, half_h, width, height, margin, zoom)
     cx, ccy, _ = transform(centre)
     ox = width / 2 - cx * scale + pan[0]
     oy = height / 2 + ccy * scale + pan[1]            # flip Y for screen

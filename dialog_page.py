@@ -6,12 +6,16 @@ as CP1250, writes the log-topic constants file, and can take its NPC id straight
 from the NPC page.
 """
 
+import json
 import os
+from pathlib import Path
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QFileDialog, QMessageBox, QScrollArea, QSplitter,
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtWidgets import (QFileDialog, QFrame, QMessageBox, QScrollArea, QSplitter,
                              QStackedWidget, QVBoxLayout, QWidget)
 
+import config
 import gamedata
 import project
 import ui
@@ -21,6 +25,33 @@ from dialog_gen import (DialogBlock, export_block_name, export_followup_name,
                         resolve_condition, sanitize, KNOWSINFO_RE)
 from dialog_widgets import BlockEditor, BlockListItem
 from theme import THEME, DaedalusHighlighter, mono_font
+
+
+def _same_file(a, b):
+    """True when two paths (Path or str, any case on macOS/Windows) are one file."""
+    if not a or not b:
+        return False
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def decode_text(raw):
+    """Plain text from any editor -> (str, encoding name).
+
+    UTF-8 first (what Mac editors write), then the single-byte Polish code
+    pages Windows editors use. Decoding UTF-8 with errors="replace" is what
+    turned every Polish letter of a CP1250 file into a question-mark box.
+    """
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16"), "UTF-16"
+    for enc in ("utf-8-sig", "cp1250", "iso-8859-2"):
+        try:
+            return raw.decode(enc), ("UTF-8" if enc == "utf-8-sig" else enc.upper())
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace"), "UTF-8 (damaged)"
 
 
 class DialogPage(QWidget):
@@ -33,7 +64,16 @@ class DialogPage(QWidget):
         self.current_file_path = None
         self._npc_id_touched = False
         self._npc_name_touched = False
+        # What the editor looked like at the last save / open / new. Anything
+        # different from this is work that is not in a file yet.
+        self._saved_text = ""
+        self._draft_timer = QTimer(self)
+        self._draft_timer.setSingleShot(True)
+        self._draft_timer.setInterval(1500)
+        self._draft_timer.timeout.connect(self._write_draft)
         self._build()
+        QShortcut(QKeySequence.StandardKey.Save, self, lambda: self._save())
+        QTimer.singleShot(0, self._offer_restore)
 
     # ------------------------------------------------------------------ layout
     def _build(self):
@@ -55,29 +95,34 @@ class DialogPage(QWidget):
         DaedalusHighlighter(self.dia_preview.document())
         self.side.add_tab(self.dia_preview, "Script")
 
-        # The work area: header, then scenes beside the scene editor.
-        work = QWidget()
-        col = QVBoxLayout(work)
+        # The work area: the scene list down the left edge, hanging from the Dialog
+        # tab the way the NPC tab's list does, then the header over the editor.
+        self.scene_split = QSplitter(Qt.Orientation.Horizontal)
+        self.scene_split.setHandleWidth(0)       # locked: the list is not resizable
+        self.scene_split.setChildrenCollapsible(False)
+        self.scene_split.addWidget(self._sidebar())
+
+        right = QWidget()
+        col = QVBoxLayout(right)
         col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(0)
         col.addWidget(self._header())
-
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(ui.GAP)
-        splitter.addWidget(self._sidebar())
 
         self.editor_stack = QStackedWidget()
         self.placeholder = ui.placeholder("Select or create a dialog scene")
         self.editor_stack.addWidget(self.placeholder)
         self.editor_stack.setCurrentWidget(self.placeholder)
-        splitter.addWidget(self.editor_stack)
-        splitter.setSizes([THEME["sidebar_width"], 700])
-        splitter.setStretchFactor(1, 1)
         body = QWidget()
         body_col = QVBoxLayout(body)
         body_col.setContentsMargins(ui.PADDING, ui.PADDING, 0, 0)
-        body_col.addWidget(splitter)
+        body_col.addWidget(self.editor_stack)
         col.addWidget(body, 1)
+        right.setMinimumWidth(max(right.minimumSizeHint().width(), 320))
+        self.scene_split.addWidget(right)
+        self.scene_split.setStretchFactor(0, 0)
+        self.scene_split.setStretchFactor(1, 1)
+        self.set_scene_width(THEME["sidebar_width"])
+        work = self.scene_split
 
         root.addWidget(ui.page(work, self.side, left=0))
 
@@ -105,25 +150,22 @@ class DialogPage(QWidget):
 
         who = ui.row()
         self.npc_name_edit = ui.text_input()
-        self.npc_name_edit.setFixedWidth(170)
         self.npc_id_edit = ui.dropdown([])
         self.npc_id_edit.setEditable(True)
-        self.npc_id_edit.setMinimumWidth(260)
+        self.npc_id_edit.setMinimumWidth(150)
         self._reload_npc_ids()
 
         who.addWidget(ui.label("Speaker"))
-        who.addWidget(self.npc_name_edit)
+        who.addWidget(self.npc_name_edit, 1)
         who.addSpacing(ui.GAP)
         who.addWidget(ui.label("Instance"))
-        who.addWidget(self.npc_id_edit, 1)
-        who.addWidget(ui.button("Reload", self._reload_npc_ids, ui.DEFAULT,
-                                "Re-scan Content/Story/NPC", compact=True))
+        who.addWidget(self.npc_id_edit, 2)
         col.addLayout(who)
 
+        # Save and Open live in the side panel, which is also where Save as is.
         files = ui.row()
         for text, slot, tip in [
-                ("New", self._new_project, "Clear and start a new dialog"),
-                ("Open", self._open, "Load a .d dialog file"),
+                ("New", self._new_project, "Unload this dialog and start a blank one"),
                 ("Import text", self._import_text, "Read a plain Speaker - line file"),
                 ("Export text", self._export_text, "Write the spoken lines out as text")]:
             files.addWidget(ui.button(text, slot, ui.DEFAULT, tip, compact=True))
@@ -132,31 +174,40 @@ class DialogPage(QWidget):
         return holder
 
     def _sidebar(self):
-        """The list of conversation topics."""
+        """The list of conversation topics, styled as the NPC tab's list is."""
         left = QWidget()
-        left.setMaximumWidth(THEME["sidebar_width"])
+        left.setObjectName("sceneColumn")
+        self.scene_col = left
+        left.setStyleSheet(
+            f"#sceneColumn {{ background:{THEME['bg_panel']}; "
+            f"  border-right:{THEME['border_width']} solid {THEME['bg_border']}; }}")
         col = QVBoxLayout(left)
-        col.setContentsMargins(0, 0, 0, 0)
+        col.setContentsMargins(8, 10, 8, 10)
         col.setSpacing(ui.GAP)
 
-        col.addWidget(ui.heading("Scenes"))
-        col.addWidget(ui.divider())
-
         self.block_list_widget = QWidget()
+        self.block_list_widget.setStyleSheet("background:transparent;")
         self.block_list_layout = QVBoxLayout(self.block_list_widget)
         self.block_list_layout.setContentsMargins(0, 0, 0, 0)
-        self.block_list_layout.setSpacing(3)
+        self.block_list_layout.setSpacing(2)
         self.block_list_layout.addStretch()
 
         scroll = QScrollArea()
         scroll.setWidget(self.block_list_widget)
         scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea { border:none; background:transparent; }")
         col.addWidget(scroll, 1)
 
         col.addWidget(ui.button("+  New scene", lambda: self._add_block(),
                                 ui.PRIMARY, "Add another conversation topic"))
         return left
+
+    def set_scene_width(self, width):
+        """The scene list is as wide as the tab bar, so its right rule continues the
+        edge of the Dialog tab (the NPC tab does the same). It is fixed."""
+        self.scene_col.setFixedWidth(width)
 
     def set_npc_id(self, instance_name):
         """Called whenever the NPC page rebuilds its instance name.
@@ -180,6 +231,10 @@ class DialogPage(QWidget):
 
     def on_npc_saved(self, _path):
         """The NPC tab just wrote a file - refresh the dropdown so it is there."""
+        self._reload_npc_ids()
+
+    def refresh_npc_ids(self):
+        """Re-scan Content/Story/NPC; the app calls this each time the tab is shown."""
         self._reload_npc_ids()
 
     def _reload_npc_ids(self):
@@ -348,14 +403,18 @@ class DialogPage(QWidget):
         """Only emit the EXIT block if this NPC does not already have one.
 
         Two dialog files for the same NPC that both emit DIA_<NPC>_EXIT are a
-        redefinition error and stop the whole mod compiling.
+        redefinition error and stop the whole mod compiling. The file this dialog
+        is saved to (or was opened from) does not count: it is about to be
+        rewritten, so its own EXIT must be written back, not treated as someone
+        else's.
         """
         ni = self._npc_id()
         if not ni:
             return True
         exit_name = f"DIA_{sanitize(ni)}_EXIT".upper()
+        target = project.DIA_DIR / f"DIA_{sanitize(ni)}.d"
         for f in project.iglob(project.DIA_DIR, "DIA*.d"):
-            if f == self.current_file_path:
+            if _same_file(f, self.current_file_path) or _same_file(f, target):
                 continue
             if exit_name in project.read_script(f).upper():
                 return False
@@ -368,7 +427,10 @@ class DialogPage(QWidget):
                                  blocks, emit_exit=self._emit_exit())
 
     def _refresh_preview(self, *_):
-        self.dia_preview.setPlainText(self._dia_text())
+        text = self._dia_text()
+        self.dia_preview.setPlainText(text)
+        if self.is_dirty(text):
+            self._draft_timer.start()      # restarts: writes 1.5 s after the last edit
         self.text_preview.setPlainText(export_plain_dialog(self.blocks))
 
     def _problems(self):
@@ -423,7 +485,8 @@ class DialogPage(QWidget):
         nn, ni = self._npc_name(), self._npc_id()
         if not nn or not ni:
             QMessageBox.warning(self, "Missing Info",
-                                "Please set both NPC Name and NPC ID.")
+                                "Please set the Speaker name, and pick this NPC on the NPC tab "
+                                "(or open its dialog file) so the dialog knows its instance.")
             return
 
         # Same rule as the NPC tab: problems are shown first and you decide. A new log
@@ -448,8 +511,10 @@ class DialogPage(QWidget):
                 return
             target = chosen
 
-        path = project.write_script(target, self._dia_text())
+        text = self._dia_text()
+        path = project.write_script(target, text)
         self.current_file_path = path
+        self._mark_clean(text)
 
         # The log-topic constants: a dialog with a log entry does not compile without them.
         consts = generate_constants_file(ni, blocks, tuple(gamedata.log_topics()))
@@ -483,8 +548,9 @@ class DialogPage(QWidget):
         if not path:
             return
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
-                blocks = parse_plain_dialog(f.read())
+            raw = Path(path).read_bytes()
+            text, encoding = decode_text(raw)
+            blocks = parse_plain_dialog(text)
         except OSError as e:
             QMessageBox.critical(self, "Could Not Import", f"{e}")
             return
@@ -495,12 +561,20 @@ class DialogPage(QWidget):
             return
         for b in blocks:
             self._add_block(b)
-        self.side.say(f"Imported {len(blocks)} scene(s) from {os.path.basename(path)}")
+        self.side.say(f"Imported {len(blocks)} scene(s) from {os.path.basename(path)}"
+                      f"  (read as {encoding})")
 
     def _open(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Dialog File", str(project.DIA_DIR), "Daedalus (*.d)")
         if not path:
+            return
+        if self.is_dirty() and QMessageBox.question(
+                self, "Open Dialog File",
+                "The dialog in the editor has changes that are not saved.\n"
+                "Opening a file replaces it. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
         notes = []
         try:
@@ -510,20 +584,23 @@ class DialogPage(QWidget):
             return
         self._load_project(npc_name, npc_id, blocks)
         self.current_file_path = path
+        self._mark_clean()
         self.side.say(f"Opened: {path}")
         ui.report_omissions(self, "Open dialog", notes)
 
     def _new_project(self):
         if self.blocks or self._npc_name() or self._npc_id():
+            unsaved = "\nIt has changes that are NOT saved." if self.is_dirty() else ""
             confirm = QMessageBox.question(
                 self, "Start New Dialog",
-                "This clears the NPC name/ID and every scene.\nContinue?",
+                "This clears the NPC name/ID and every scene." + unsaved + "\nContinue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if confirm != QMessageBox.StandardButton.Yes:
                 return
         self._load_project("", "", [])
         self.current_file_path = None
+        self._mark_clean()
         self.side.say("")
 
     def _load_project(self, npc_name, npc_id, blocks):
@@ -557,6 +634,102 @@ class DialogPage(QWidget):
         if blocks:
             self._select_block(0)
         self._refresh_preview()
+
+    # ------------------------------------------------- unsaved work and drafts
+    def is_dirty(self, text=None):
+        """True when the editor holds scenes that no saved file has yet."""
+        if not self.blocks:
+            return False
+        return (self._dia_text() if text is None else text) != self._saved_text
+
+    def _mark_clean(self, text=None):
+        self._saved_text = self._dia_text() if text is None else text
+        self._draft_timer.stop()
+        self._clear_draft()
+
+    def _draft_path(self):
+        # Dev runs and the selftest drive the page with scratch data: leave the
+        # user's real draft alone.
+        if os.environ.get("GOTHIC_STUDIO_DEV"):
+            return None
+        return config.CONFIG_FILE.parent / "dialog_draft.json"
+
+    def _write_draft(self):
+        path = self._draft_path()
+        if path is None or not self.is_dirty():
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps({
+                "npc_name": self._npc_name(), "npc_id": self._npc_id(),
+                "file": str(self.current_file_path or ""),
+                "text": self._dia_text(),
+            }, indent=1), encoding="utf-8")
+            tmp.replace(path)             # never leaves a half-written draft
+        except OSError:
+            pass                          # a failed backup must not interrupt editing
+
+    def _clear_draft(self):
+        path = self._draft_path()
+        if path is not None:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+    def _offer_restore(self):
+        """At start-up: put back the dialog that was open when the app last ended
+        without saving it."""
+        path = self._draft_path()
+        if path is None or not path.is_file():
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            notes = []
+            name, npc_id, blocks = parse_dia_file(data["text"], notes)
+            name = data.get("npc_name") or name
+            npc_id = data.get("npc_id") or npc_id
+        except (OSError, ValueError, KeyError):
+            return
+        if not blocks:
+            self._clear_draft()
+            return
+        answer = QMessageBox.question(
+            self, "Restore unsaved dialog",
+            f"Last time Gothic Studio closed, the dialog for {npc_id or name or 'an NPC'} "
+            f"({len(blocks)} scene(s)) had not been saved.\n\nRestore it?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes)
+        if answer != QMessageBox.StandardButton.Yes:
+            self._clear_draft()
+            return
+        self._load_project(name, npc_id, blocks)
+        self.current_file_path = data.get("file") or None
+        self._saved_text = ""             # still unsaved, so it stays marked dirty
+        self._write_draft()
+        self.side.say("Restored the unsaved dialog. Save it to put it in the mod.")
+
+    def confirm_close(self):
+        """Ask what to do with unsaved scenes. True when the app may close."""
+        if not self.is_dirty():
+            return True
+        box = QMessageBox(self)
+        box.setWindowTitle("Unsaved dialog")
+        box.setText(f"The dialog for {self._npc_id() or self._npc_name() or 'this NPC'} "
+                    "has changes that are not saved.")
+        save = box.addButton("Save to mod", QMessageBox.ButtonRole.AcceptRole)
+        discard = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is save:
+            self._save()
+            return not self.is_dirty()    # a cancelled or refused save keeps the app open
+        if clicked is discard:
+            self._clear_draft()
+            return True
+        return False
 
 
 def build():

@@ -117,24 +117,60 @@ def build_npc(npc):
 
 
 def routine_lines(npc, wp=None):
-    """The TA_ lines for the daily routine.
+    """The TA_ lines for the daily routine, one per entry in npc.routines.
 
-    Two shifts that wrap around the clock. With split_routine off both use the
-    same activity and waypoint, which is the plain all-day schedule.
+    A blank waypoint falls back to the first routine's, then to `wp`.
     """
     wp = wp or npc.waypoint or "WP_INTRO_FALL3"
-    day_start = int(getattr(npc, "day_start", 8)) % 24
-    night_start = int(getattr(npc, "night_start", 22)) % 24
+    lines = []
+    for r in npc.routines or []:
+        (sh, sm), (eh, em) = r["start"], r["end"]
+        lines.append(f'\t{r["activity"]}\t({sh % 24:02d},{sm % 60:02d},'
+                     f'{eh % 24:02d},{em % 60:02d},"{r.get("waypoint") or wp}");')
+    return lines
 
-    if not getattr(npc, "split_routine", False):
-        return [f'\t{npc.routine}\t({day_start:02d},00,{day_start:02d},00,"{wp}");']
 
-    night_rtn = getattr(npc, "night_routine", None) or npc.routine
-    night_wp = getattr(npc, "night_waypoint", "") or wp
-    return [
-        f'\t{npc.routine}\t({day_start:02d},00,{night_start:02d},00,"{wp}");',
-        f'\t{night_rtn}\t({night_start:02d},00,{day_start:02d},00,"{night_wp}");',
-    ]
+def _minutes(hm):
+    return (int(hm[0]) % 24) * 60 + int(hm[1]) % 60
+
+
+def _hhmm(minute):
+    return "24:00" if minute == 1440 else f"{minute // 60 % 24:02d}:{minute % 60:02d}"
+
+
+def routine_coverage(routines):
+    """(gaps, overlaps): lists of (start, end) minute spans across the day.
+
+    Gothic runs whichever routine covers the current time; a gap leaves the
+    NPC with nothing to do, an overlap makes the later entry ambiguous.
+    """
+    count = [0] * 1440
+    for r in routines:
+        s, e = _minutes(r["start"]), _minutes(r["end"])
+        span = range(1440) if s == e else (
+            range(s, e) if s < e else list(range(s, 1440)) + list(range(0, e)))
+        for m in span:
+            count[m] += 1
+
+    def runs(pred):
+        out, start = [], None
+        for m in range(1441):
+            hit = m < 1440 and pred(count[m])
+            if hit and start is None:
+                start = m
+            elif not hit and start is not None:
+                out.append((start, m))
+                start = None
+        # join a run that wraps past midnight
+        if len(out) > 1 and out[0][0] == 0 and out[-1][1] == 1440:
+            out = [(out[-1][0], out[0][1])] + out[1:-1]
+        return out
+
+    return runs(lambda c: c == 0), runs(lambda c: c > 1)
+
+
+def describe_span(span):
+    return f"{_hhmm(span[0])}-{_hhmm(span[1])}"
 
 
 def default_filename(npc):
@@ -163,11 +199,10 @@ def validate(npc):
         ("guild", npc.guild, "guild"),
         ("npctype", npc.type, "NPC type"),
         ("tactic", npc.fight, "fight tactic"),
-        ("routine", npc.routine, "daily routine"),
         ("head", npc.head, "head mesh"),
     ]
-    if getattr(npc, "split_routine", False):
-        checks.append(("routine", npc.night_routine, "night routine"))
+    for i, r in enumerate(npc.routines, 1):
+        checks.append(("routine", r["activity"], f"routine {i} activity"))
     for kind, value, label in checks:
         if gamedata.unknown(kind, value):
             problems.append(f"Unknown {label}: {value}")
@@ -179,9 +214,21 @@ def validate(npc):
         if gamedata.unknown("item", entry.get("item")):
             problems.append(f"Unknown item: {entry.get('item')}")
 
+    if not npc.routines:
+        problems.append("No routine: add at least one so the NPC has something to do.")
+    gaps, overlaps = routine_coverage(npc.routines)
+    if npc.routines and gaps:
+        problems.append("Routine leaves time uncovered: "
+                        + ", ".join(describe_span(g) for g in gaps))
+    if overlaps:
+        problems.append("Routines overlap: "
+                        + ", ".join(describe_span(o) for o in overlaps))
+
     wps = gamedata.waypoints()
-    if wps and npc.waypoint and npc.waypoint.upper() not in {w.upper() for w in wps}:
-        problems.append(f"Waypoint not found in any world: {npc.waypoint}")
+    known = {w.upper() for w in wps}
+    for r in npc.routines:
+        if wps and r.get("waypoint") and r["waypoint"].upper() not in known:
+            problems.append(f"Waypoint not found in any world: {r['waypoint']}")
 
     existing = gamedata.npc_instances()
     inst = instance_name(npc)
@@ -197,7 +244,7 @@ _TALENT_FIELDS = {"NPC_TALENT_1H": "t1h", "NPC_TALENT_2H": "t2h", "NPC_TALENT_BO
                   "NPC_TALENT_CROSSBOW": "cbow", "NPC_TALENT_MAGE": "magic"}
 _ATTRIBUTES = {"ATR_STRENGTH": "str", "ATR_DEXTERITY": "dex",
                "ATR_MANA_MAX": "mana", "ATR_HITPOINTS_MAX": "hp"}
-_SHIFT = re.compile(r'(TA_\w+)\s*\(\s*(\d+)\s*,\s*\d+\s*,\s*(\d+)\s*,\s*\d+\s*,\s*"([^"]*)"\s*\)', re.I)
+_SHIFT = re.compile(r'(TA_\w+)\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*"([^"]*)"\s*\)', re.I)
 
 
 def _skill_level(percent):
@@ -354,16 +401,11 @@ def parse_npc(text):
             elif norm(raw):
                 other += 1
         if shifts:
-            npc.routine, day, _, npc.waypoint = shifts[0]
-            npc.routine = canon(npc.routine, gamedata.routines())
-            npc.day_start = int(day)
-            if len(shifts) > 1:
-                npc.split_routine = True
-                night_rtn, night, _, npc.night_waypoint = shifts[1]
-                npc.night_routine = canon(night_rtn, gamedata.routines())
-                npc.night_start = int(night)
-            if len(shifts) > 2:
-                unread.append(f"{len(shifts) - 2} further routine shift(s) in {funcs[name][0]}")
+            from npc_model import new_routine
+            npc.routines = [
+                new_routine(canon(act, gamedata.routines()),
+                            (int(sh), int(sm)), (int(eh), int(em)), wp)
+                for act, sh, sm, eh, em, wp in shifts]
         if other:
             unread.append(f"{other} non-schedule statement(s) in {funcs[name][0]}")
     elif name:

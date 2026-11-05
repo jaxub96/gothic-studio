@@ -8,6 +8,7 @@ and announces the instance name it built so the Dialog page can pick it up.
 from pathlib import Path
 
 from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (QFileDialog, QMessageBox, QVBoxLayout,
                              QWidget)
 
@@ -32,9 +33,9 @@ class NpcPage(QWidget):
     #: emitted after a successful save, with the path written
     saved = pyqtSignal(str)
 
-    def __init__(self):
+    def __init__(self, npc=None):
         super().__init__()
-        self.npc = Npc()
+        self.npc = npc if npc is not None else Npc()
         self.handlers = NpcHandlers(self.npc, self.refresh)
         self._last_instance = ""
         self._last_name = ""
@@ -68,6 +69,8 @@ class NpcPage(QWidget):
         self._fill_tabs()
 
         root.addWidget(ui.page(self.tabs, self.side, left=0))
+        # Saving must not need the side panel, which the app can hide.
+        QShortcut(QKeySequence.StandardKey.Save, self, lambda: self._save())
 
     def _fill_tabs(self):
         """Build every tab's widgets from the current Npc."""
@@ -203,5 +206,5 @@ class NpcPage(QWidget):
         self.saved.emit(str(path))
 
 
-def build():
-    return NpcPage()
+def build(npc=None):
+    return NpcPage(npc)
