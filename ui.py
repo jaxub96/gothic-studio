@@ -27,16 +27,17 @@ Buttons
   button(text, on_click, variant=...)  variants: primary, default, subtle, danger
 """
 
+import re
 import weakref
 
-from PyQt6.QtCore import Qt, QTime, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, Qt, QTime, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QFrame,
                              QTabWidget,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget,
                              QPushButton, QRadioButton, QScrollArea, QSlider,
-                             QSpinBox, QSplitter, QStackedWidget,
-                             QTextEdit, QTimeEdit, QTreeWidget, QVBoxLayout,
+                             QSizePolicy, QSpinBox, QSplitter, QStackedWidget,
+                             QPlainTextEdit, QStyle, QStyleOptionComboBox, QStylePainter, QTextEdit, QTimeEdit, QTreeWidget, QVBoxLayout,
                              QWidget)
 
 import theme
@@ -285,6 +286,22 @@ class Dropdown(QComboBox):
         super().hidePopup()
         QTimer.singleShot(0, self._refocus)
 
+    def paintEvent(self, event):
+        """Show a too-long current item as `Militia - upright, mar…` instead of
+        cutting it off mid-letter; the full text is the tooltip."""
+        if self.isEditable():
+            return super().paintEvent(event)
+        painter = QStylePainter(self)
+        opt = QStyleOptionComboBox()
+        self.initStyleOption(opt)
+        room = self.style().subControlRect(
+            QStyle.ComplexControl.CC_ComboBox, opt, QStyle.SubControl.SC_ComboBoxEditField, self).width()
+        text = opt.currentText
+        opt.currentText = self.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, max(room - 8, 20))
+        self.setToolTip(text if opt.currentText != text else "")
+        painter.drawComplexControl(QStyle.ComplexControl.CC_ComboBox, opt)
+        painter.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, opt)
+
     def _refocus(self):
         if self.isVisible() and self.isEnabled():
             self.setFocus(Qt.FocusReason.PopupFocusReason)
@@ -387,8 +404,24 @@ def spin(lo, hi, value, on_change, suffix="", width=110):
     return number(lo, hi, value, on_change, suffix, width)
 
 
+class _Check(QCheckBox):
+    """A checkbox whose minimum width is its full text, so a narrow window makes the
+    page scroll sideways instead of cutting the label off."""
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+    def event(self, e):
+        # The stylesheet's font arrives after the layout first measured us; tell the
+        # layout to measure again, or it keeps a stale, too-small minimum.
+        if e.type() in (QEvent.Type.Polish, QEvent.Type.StyleChange, QEvent.Type.FontChange,
+                        QEvent.Type.Show):
+            self.updateGeometry()
+        return super().event(e)
+
+
 def checkbox(text, checked=False, on_change=None, tooltip="", compact=False):
-    w = QCheckBox("  " + text)
+    w = _Check("  " + text)
     w.setChecked(checked)
     if tooltip:
         w.setToolTip(tooltip)
@@ -715,12 +748,52 @@ class SideTabs(QWidget):
         self._list.setCurrentRow(index)
 
 
-class SidePanel(QWidget):
-    """The right-hand side of a page: preview tabs, a status line, actions.
+class ActionBar(QWidget):
+    """The strip along the bottom of a page: a status line, then Validate, Save as,
+    Open and Save to mod. It belongs to the page, not to the side panel, so it is
+    still there when the side panel is hidden."""
 
-    Both the NPC page and the Dialog page use this, so the two halves of the
-    app have the same shape - previews in the same place, Validate and Save in
-    the same corner, the status line saying the same kind of thing.
+    def __init__(self, on_validate, on_save, on_save_as, save_tip="", on_open=None,
+                 parent=None):
+        super().__init__(parent)
+        col = QVBoxLayout(self)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(0)
+
+        rule = QFrame()
+        rule.setFixedHeight(1)
+        rule.setStyleSheet(f"background:{THEME['bg_border']}; border:none;")
+        col.addWidget(rule)
+
+        bar = QHBoxLayout()
+        bar.setContentsMargins(PADDING, GAP + 2, PADDING, GAP + 2)
+        bar.setSpacing(GAP)
+        self.status = hint("")
+        # A long path in the status line must not set the window's minimum width.
+        self.status.setWordWrap(True)
+        self.status.setMinimumWidth(0)
+        self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        bar.addWidget(self.status, 1)
+        bar.addWidget(button("Validate", on_validate, DEFAULT,
+                             "Check every identifier against Content/", compact=True))
+        bar.addWidget(button("Save as...", on_save_as, DEFAULT,
+                             "Save somewhere other than the mod", compact=True))
+        if on_open:
+            bar.addWidget(button("Open...", on_open, DEFAULT,
+                                 "Load a saved .d file back into the editor", compact=True))
+        self.save_btn = button("Save to mod", on_save, PRIMARY, save_tip, compact=True)
+        bar.addWidget(self.save_btn)
+        col.addLayout(bar)
+
+    def say(self, text):
+        self.status.setText(text)
+
+
+class SidePanel(QWidget):
+    """The right-hand side of a page: the preview tabs.
+
+    The actions and the status line live in `bar`, which page() puts along the
+    bottom of the page so hiding this panel does not take Save with it.
     """
 
     def __init__(self, on_validate, on_save, on_save_as, save_tip="", on_open=None,
@@ -733,32 +806,9 @@ class SidePanel(QWidget):
         self.tabs = QTabWidget()
         col.addWidget(self.tabs, 1)
 
-        rule = QFrame()
-        rule.setFixedHeight(1)
-        rule.setStyleSheet(f"background:{THEME['bg_border']}; border:none;")
-        col.addWidget(rule)
-
-        self.status = hint("")
-        # A long path in the status line must not set the panel's minimum width.
-        self.status.setWordWrap(True)
-        self.status.setMinimumWidth(0)
-        col.addWidget(self.status)
-
-        # Two rows so the panel can be narrow: the secondary actions on top, the
-        # one that writes into the mod across the full width below.
-        actions = row()
-        actions.addWidget(button("Validate", on_validate, DEFAULT,
-                                 "Check every identifier against Content/", compact=True))
-        actions.addWidget(button("Save as...", on_save_as, DEFAULT,
-                                 "Save somewhere other than the mod", compact=True))
-        if on_open:
-            actions.addWidget(button("Open...", on_open, DEFAULT,
-                                     "Load a saved .d file back into the editor",
-                                     compact=True))
-        actions.addStretch()
-        col.addLayout(actions)
-        self.save_btn = button("Save to mod", on_save, PRIMARY, save_tip)
-        col.addWidget(self.save_btn)
+        self.bar = ActionBar(on_validate, on_save, on_save_as, save_tip, on_open)
+        self.save_btn = self.bar.save_btn
+        self.status = self.bar.status
 
     def add_tab(self, widget, title):
         self.tabs.addTab(widget, title)
@@ -768,18 +818,22 @@ class SidePanel(QWidget):
         return self.tabs.currentIndex()
 
     def say(self, text):
-        self.status.setText(text)
+        self.bar.say(text)
 
 
 def page(work_area, side_panel, work_stretch=7, side_stretch=3, left=PADDING):
-    """A whole page: what you edit on the left, what you get on the right.
+    """A whole page: what you edit on the left, what you get on the right, and the
+    action bar along the bottom.
 
     The two halves sit in a splitter, so the script panel can be dragged wider
     or narrower.
     """
     holder = QWidget()
-    lay = QHBoxLayout(holder)
-    lay.setContentsMargins(left, 0, PADDING, PADDING)
+    outer = QVBoxLayout(holder)
+    outer.setContentsMargins(0, 0, 0, 0)
+    outer.setSpacing(0)
+    top = QHBoxLayout()
+    top.setContentsMargins(left, 0, PADDING, PADDING)
     split = QSplitter(Qt.Orientation.Horizontal)
     split.setHandleWidth(PADDING)
     split.setChildrenCollapsible(False)
@@ -787,12 +841,14 @@ def page(work_area, side_panel, work_stretch=7, side_stretch=3, left=PADDING):
     split.addWidget(side_panel)
     split.setStretchFactor(0, work_stretch)
     split.setStretchFactor(1, side_stretch)
-    # Never let a drag squeeze a panel below what its own buttons need.
+    # Never let a drag squeeze a panel below what its own contents need.
     work_area.setMinimumWidth(max(work_area.minimumSizeHint().width(), 360))
     side_panel.setMinimumWidth(max(side_panel.minimumSizeHint().width(), 300))
     total = work_stretch + side_stretch
     split.setSizes([1000 * work_stretch // total, 1000 * side_stretch // total])
-    lay.addWidget(split)
+    top.addWidget(split)
+    outer.addLayout(top, 1)
+    outer.addWidget(side_panel.bar)
     holder.splitter = split
     return holder
 
@@ -917,6 +973,32 @@ class CodeView(QTextEdit):
 def code_view(font=None):
     """A read-only script panel; see CodeView."""
     return CodeView(font)
+
+
+_FONT_PX = re.compile(r"font-size\s*:\s*[\d.]+\s*(?:px|pt)")
+_FONT_BASES = ((QLineEdit, "QLineEdit"), (QComboBox, "QComboBox"), (QSpinBox, "QSpinBox"),
+               (QPushButton, "QPushButton"), (QCheckBox, "QCheckBox"), (QLabel, "QLabel"),
+               (QTextEdit, "QTextEdit"), (QPlainTextEdit, "QPlainTextEdit"))
+
+
+def fit_font(root, px):
+    """Give `root` and everything inside it one text size.
+
+    These widgets carry their own stylesheets, which beat both setFont and a
+    parent's stylesheet, so the size is rewritten in each widget's own sheet.
+    """
+    for w in [root, *root.findChildren(QWidget)]:
+        base = next((name for cls, name in _FONT_BASES if isinstance(w, cls)), None)
+        if base is None:
+            continue
+        css = w.styleSheet()
+        if _FONT_PX.search(css):
+            css = _FONT_PX.sub(f"font-size:{px}px", css)
+        elif "{" in css:
+            css += f" {base} {{ font-size:{px}px; }}"
+        else:
+            css += f" font-size:{px}px;"
+        w.setStyleSheet(css)
 
 
 # --- pick the control that matches the data ----------------------------------

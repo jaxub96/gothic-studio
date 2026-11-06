@@ -18,9 +18,10 @@ from PyQt6.QtWidgets import (
     QTabWidget,
     QSplitter,
     QApplication,
+    QPlainTextEdit,
 )
-from PyQt6.QtCore import Qt, QTimer, QMimeData
-from PyQt6.QtGui import QDrag
+from PyQt6.QtCore import QSize, Qt, QTimer, QMimeData
+from PyQt6.QtGui import QDrag, QFont, QFontMetrics, QPainter
 
 from theme import THEME
 import ui
@@ -65,6 +66,10 @@ class ChatInput(QLineEdit):
             e.accept()
             return
         super().keyPressEvent(e)
+
+
+#: the whole dialog panel uses the chat bubble's text size
+CHAT_PX = int(THEME["font_size_chat"].rstrip("px"))
 
 
 # ── Drag-and-drop reordering for chat bubbles ───────────────────────────────
@@ -340,7 +345,7 @@ class EffectInsertRow(QWidget):
         self.kind_cmb.addItems(
             ["Give Item", "Take Item", "Give XP", "Change Routine", "Follow", "Stop Following", "Log Entry"]
         )
-        self.kind_cmb.setFixedWidth(118)
+        self.kind_cmb.setMinimumWidth(140)
         self.kind_cmb.setStyleSheet(SS["combo"])
         self.kind_cmb.currentIndexChanged.connect(self._update_visibility)
 
@@ -368,7 +373,7 @@ class EffectInsertRow(QWidget):
         self.status_cmb.addItems(
             ["LOG_RUNNING", "LOG_SUCCESS", "LOG_FAILED", "LOG_NOTE"]
         )
-        self.status_cmb.setFixedWidth(118)
+        self.status_cmb.setMinimumWidth(140)
         self.status_cmb.setStyleSheet(SS["combo"])
         self.entry_edit = QLineEdit()
         self.entry_edit.setPlaceholderText("Log entry text")
@@ -485,7 +490,7 @@ class ChatLinesWidget(QWidget):
         self.scroll.setWidget(self.chat_container)
         self.scroll.setWidgetResizable(True)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.scroll.setMinimumHeight(220)
+        self.scroll.setMinimumHeight(110)
         self.scroll.setStyleSheet(
             f"QScrollArea {{ border:{THEME['border_width']} solid {THEME['bg_input_border']}; "
             f"border-radius:{THEME['radius_md']}; background:{THEME['bg_main']}; }}"
@@ -611,6 +616,52 @@ class ChatLinesWidget(QWidget):
         return list(self.entries)
 
 
+# ── Scene conditions ──────────────────────────────────────────────────────────
+class SceneCombo(ui.Dropdown):
+    """An editable list of the other scenes in this file. It is refilled each time
+    it opens, so scenes added or renamed since are always there; typing a DIA_
+    instance from another file works too."""
+
+    def __init__(self, names=None):
+        super().__init__()
+        self.names = names or (lambda: [])
+        self.setEditable(True)
+        self.lineEdit().setPlaceholderText("a scene the hero must already have heard")
+        self.setStyleSheet(SS["combo"])
+
+    def showPopup(self):
+        current = self.currentText()
+        self.blockSignals(True)
+        self.clear()
+        self.addItem("")
+        self.addItems(self.names())
+        self.setEditText(current)
+        self.blockSignals(False)
+        super().showPopup()
+
+
+class ConditionRow(QFrame):
+    """One extra, hand-typed condition. Only the expression goes in; the scene's
+    function wraps it in `if (...) { return 1; }` itself."""
+
+    def __init__(self, text="", on_remove=None, on_change=None):
+        super().__init__()
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        self.edit = QLineEdit(text)
+        self.edit.setPlaceholderText("e.g.  Kapitel >= 2   or   Npc_HasItems(other, ItMi_Gold) >= 50")
+        self.edit.setStyleSheet(SS["field"])
+        rm = QPushButton("✕")
+        rm.setFixedSize(22, 22)
+        rm.setStyleSheet(SS["rm_btn"])
+        rm.clicked.connect(lambda: on_remove(self) if on_remove else None)
+        if on_change:
+            self.edit.textChanged.connect(on_change)
+        lay.addWidget(self.edit, 1)
+        lay.addWidget(rm)
+
+
 # ── Choices ───────────────────────────────────────────────────────────────────
 class ChoiceWidget(QFrame):
     def __init__(self, parent=None, on_remove=None):
@@ -634,25 +685,39 @@ class ChoiceWidget(QFrame):
         )
         self.func = QLineEdit()
         self.func.setPlaceholderText("Handler func")
-        self.func.setFixedWidth(210)
+        self.func.setMinimumWidth(150)
         self.func.setStyleSheet(SS["field"])
+        # Whether this reply sends the hero back to the menu it came from
+        # (Info_ClearChoices). Untick it and the other choices stay on offer.
+        self.back_cb = QCheckBox("Back")
+        self.back_cb.setChecked(True)
+        self.back_cb.setStyleSheet(SS["check"])
+        self.back_cb.setToolTip(
+            "Ticked: after this reply the menu closes and the conversation goes back "
+            "(Info_ClearChoices).\nUnticked: the other choices stay, so the player can "
+            "pick several before going back.")
         rm = QPushButton("✕")
         rm.setFixedSize(22, 22)
         rm.setStyleSheet(SS["rm_btn"])
         rm.clicked.connect(lambda: self.on_remove(self) if self.on_remove else None)
-        lay.addWidget(self.label, 2)
-        lay.addWidget(self.func, 1)
+        lay.addWidget(self.label, 3)
+        lay.addWidget(self.func, 2)
+        lay.addWidget(self.back_cb)
         lay.addWidget(rm)
+        ui.fit_font(self, CHAT_PX)
 
     def lock_func(self, name):
         """Called once a follow-up scene has been auto-created for this choice —
         the function name is now managed by that scene, not free text."""
         self.func.setText(name)
         self.func.setReadOnly(True)
-        self.func.setStyleSheet(SS["field_readonly"])
+        # Managed by the scene, so it needs no box of its own: the choice text gets
+        # the whole row, and the handler's full name is on hover.
+        self.func.hide()
+        self.label.setToolTip(f"Handler: {name}")
 
     def get_choice(self):
-        return DialogChoice(self.label.text(), self.func.text())
+        return DialogChoice(self.label.text(), self.func.text(), self.back_cb.isChecked())
 
 
 class BlockEditor(QWidget):
@@ -681,7 +746,8 @@ class BlockEditor(QWidget):
 
         def lbl(text, width=60):
             w = QLabel(text)
-            w.setFixedWidth(width)
+            if width:                      # 0: as wide as the text, never clipped
+                w.setFixedWidth(width)
             w.setStyleSheet(
                 f"color:{THEME['text_secondary']}; font-weight:400; font-size:{THEME['font_size_small']};"
             )
@@ -733,7 +799,7 @@ class BlockEditor(QWidget):
         cp.setSpacing(6)
 
         choices_hdr = QHBoxLayout()
-        choices_hdr.addWidget(lbl("Choices", 60))
+        choices_hdr.addWidget(lbl("Choices", 0))
         add_choice_btn = QPushButton("＋  Add choice")
         add_choice_btn.setStyleSheet(SS["add_btn"])
         add_choice_btn.clicked.connect(lambda: self._add_choice())
@@ -796,12 +862,33 @@ class BlockEditor(QWidget):
             av.addLayout(r3)
 
             r4 = QHBoxLayout()
-            self.cond_edit = QLineEdit()
-            self.cond_edit.setPlaceholderText("e.g.  if (Kapitel < 3) { return 1; }")
-            self.cond_edit.setStyleSheet(SS["field"])
-            r4.addWidget(lbl("Cond"))
-            r4.addWidget(self.cond_edit, 1)
+            self.requires_cmb = SceneCombo(lambda: self.scene_names())
+            r4.addWidget(lbl("Requires", 70))
+            r4.addWidget(self.requires_cmb, 1)
             av.addLayout(r4)
+
+            xh = QHBoxLayout()
+            xh.addWidget(lbl("Also if", 70))
+            add_cond = QPushButton("＋  Add condition")
+            add_cond.setStyleSheet(SS["add_btn"])
+            add_cond.clicked.connect(lambda: self._add_condition())
+            xh.addStretch()
+            xh.addWidget(add_cond)
+            av.addLayout(xh)
+            self.cond_layout = QVBoxLayout()
+            self.cond_layout.setSpacing(4)
+            av.addLayout(self.cond_layout)
+
+            # A condition body that is not `if (...) { return 1; }` cannot be split
+            # into the fields above; it is shown here and written back as it was read.
+            self.raw_cond_note = QLabel("Custom condition, kept exactly as written:")
+            self.raw_cond_edit = QPlainTextEdit()
+            self.raw_cond_edit.setFixedHeight(80)
+            self.raw_cond_edit.setStyleSheet(SS["field"].replace("QLineEdit", "QPlainTextEdit"))
+            self.raw_cond_note.hide()
+            self.raw_cond_edit.hide()
+            av.addWidget(self.raw_cond_note)
+            av.addWidget(self.raw_cond_edit)
 
             self.stop_cb = QCheckBox("AI_StopProcessInfos at end")
             self.stop_cb.setChecked(True)
@@ -817,10 +904,13 @@ class BlockEditor(QWidget):
             self.perm_cb = QCheckBox()
             self.imp_cb = QCheckBox()
             self.trade_cb = QCheckBox()
-            self.cond_edit = QLineEdit()
+            self.requires_cmb = SceneCombo()
+            self.cond_layout = QVBoxLayout()
+            self.raw_cond_edit = QPlainTextEdit()
             self.stop_cb = QCheckBox()
             note = QLabel(
-                "This reply closes back to the main dialog automatically.\n"
+                "Whether this reply goes back to the main menu is set on its choice row "
+                "(the Back box) in the scene it belongs to.\n"
                 "Give/take items, XP, and log entries are added inline in the Dialog tab."
             )
             note.setWordWrap(True)
@@ -833,10 +923,48 @@ class BlockEditor(QWidget):
         tabs.addTab(adv_tab, "Advanced")
         root.addWidget(tabs, 1)
 
-        for w in [self.name_edit, self.desc_edit, self.cond_edit]:
+        for w in [self.name_edit, self.desc_edit]:
             w.textChanged.connect(self._emit)
+        self.requires_cmb.currentTextChanged.connect(self._emit)
+        self.raw_cond_edit.textChanged.connect(self._emit)
+        # One text size for the whole panel: the chat bubble's.
+        ui.fit_font(dialog_tab, CHAT_PX)
+        ui.fit_font(adv_tab, CHAT_PX)
         for w in [self.perm_cb, self.imp_cb, self.trade_cb, self.stop_cb]:
             w.stateChanged.connect(self._emit)
+
+    def scene_names(self):
+        """Other scenes this one could require; the page supplies the list."""
+        return []
+
+    def _add_condition(self, text=""):
+        row = ConditionRow(text, on_remove=self._rm_condition, on_change=self._emit)
+        ui.fit_font(row, CHAT_PX)
+        self.cond_layout.addWidget(row)
+        if not text:
+            row.edit.setFocus()
+        self._emit()
+        return row
+
+    def _rm_condition(self, row):
+        row.setParent(None)
+        row.deleteLater()
+        self._emit()
+
+    def _conditions(self):
+        return [self.cond_layout.itemAt(i).widget().edit.text().strip()
+                for i in range(self.cond_layout.count())
+                if self.cond_layout.itemAt(i).widget() is not None
+                and self.cond_layout.itemAt(i).widget().edit.text().strip()]
+
+    def set_requires(self, name):
+        """Point the Requires box at `name` without counting it as an edit."""
+        self.requires_cmb.blockSignals(True)
+        self.requires_cmb.setEditText(name)
+        self.requires_cmb.blockSignals(False)
+
+    def requires_text(self):
+        return self.requires_cmb.currentText().strip()
 
     def _emit(self, *_):
         if getattr(self, "_suppress_emit", False):
@@ -849,8 +977,10 @@ class BlockEditor(QWidget):
         if choice:
             cw.label.setText(choice.label)
             cw.func.setText(choice.func_name)
+            cw.back_cb.setChecked(bool(choice.back))
         cw.label.textChanged.connect(self._emit)
         cw.func.textChanged.connect(self._emit)
+        cw.back_cb.stateChanged.connect(self._emit)
         self.choices_layout.addWidget(cw)
         if not is_loaded and self.on_choice_added:
             self.on_choice_added(cw)  # lets MainWindow auto-create the follow-up scene
@@ -880,7 +1010,9 @@ class BlockEditor(QWidget):
             b.permanent = 1 if self.perm_cb.isChecked() else 0
             b.important = 1 if self.imp_cb.isChecked() else 0
             b.is_trade = self.trade_cb.isChecked()
-            b.condition_expr = self.cond_edit.text().strip()
+            b.requires = self.requires_text()
+            b.extra_conditions = self._conditions()
+            b.condition_expr = self.raw_cond_edit.toPlainText().strip()
             b.stop_after = self.stop_cb.isChecked()
         b.entries = self.chat.get_entries()
         for i in range(self.choices_layout.count()):
@@ -897,7 +1029,17 @@ class BlockEditor(QWidget):
             self.perm_cb.setChecked(bool(b.permanent))
             self.imp_cb.setChecked(bool(b.important))
             self.trade_cb.setChecked(bool(b.is_trade))
-            self.cond_edit.setText(b.condition_expr)
+            self.set_requires(b.requires)
+            while self.cond_layout.count():
+                w = self.cond_layout.takeAt(0).widget()
+                if w is not None:
+                    w.setParent(None)
+                    w.deleteLater()
+            for text in b.extra_conditions:
+                self._add_condition(text)
+            self.raw_cond_edit.setPlainText(b.condition_expr)
+            self.raw_cond_note.setVisible(bool(b.condition_expr))
+            self.raw_cond_edit.setVisible(bool(b.condition_expr))
             self.stop_cb.setChecked(bool(b.stop_after))
         self.chat.load_entries(b.entries)
         self._clear_choices()
@@ -910,6 +1052,21 @@ class BlockEditor(QWidget):
             self.choices_layout.itemAt(i).widget()
             for i in range(self.choices_layout.count())
         ]
+
+
+class ElidedLabel(QLabel):
+    """A one-line label that ends in an ellipsis when its text does not fit, rather
+    than being cut off; the full text is the tooltip."""
+
+    def minimumSizeHint(self):
+        return QSize(0, super().minimumSizeHint().height())
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setPen(self.palette().windowText().color())
+        painter.setFont(self.font())
+        text = self.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideRight, self.width())
+        painter.drawText(self.rect(), int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), text)
 
 
 class BlockListItem(QFrame):
@@ -926,9 +1083,11 @@ class BlockListItem(QFrame):
         self.setFixedHeight(32)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         lay = QHBoxLayout(self)
-        left_margin = 18 + (self.depth * 16) if self.is_followup else 10 + (self.depth * 10)
-        lay.setContentsMargins(left_margin, 4, 6, 4)
-        self.lbl = QLabel(self._label_text(name or f"Scene {idx+1}"))
+        self.left_margin = 14 + (self.depth * 14) if self.is_followup else 10 + (self.depth * 10)
+        lay.setContentsMargins(self.left_margin, 4, 4, 4)
+        lay.setSpacing(4)
+        self.lbl = ElidedLabel(self._label_text(name or f"Scene {idx+1}"))
+        self.lbl.setToolTip(self.lbl.text())
         rm = QPushButton("✕")
         rm.setFixedSize(18, 18)
         rm.setStyleSheet(SS["rm_btn"])
@@ -966,6 +1125,15 @@ class BlockListItem(QFrame):
 
     def update_name(self, n):
         self.lbl.setText(self._label_text(n or f"Scene {self.idx+1}"))
+        self.lbl.setToolTip(self.lbl.text())
+
+    def needed_width(self):
+        """The row width at which its name shows in full, even when selected (bold)."""
+        self.lbl.ensurePolished()
+        font = QFont(self.lbl.font())
+        font.setBold(True)
+        text = QFontMetrics(font).horizontalAdvance(self.lbl.text())
+        return self.left_margin + text + 8 + 18 + 4 + 4
 
     def mousePressEvent(self, e):
         if self.on_select:
