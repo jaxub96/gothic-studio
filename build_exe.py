@@ -2,13 +2,17 @@
 build_exe.py - freeze Gothic Studio into a single app.
 
     pip install pyinstaller
-    python build_exe.py
+    python build_exe.py            # one file:   dist/GothicStudio.exe
+    python build_exe.py --onedir   # one folder: dist/GothicStudio/GothicStudio.exe
 
-Produces, next to this folder, in tools/:
+Produces, in dist/:
 
     Windows   GothicStudio.exe
-    macOS     GothicStudio.app        (plus a bare unix binary, harmless)
-    Linux     GothicStudio
+    macOS     GothicStudio.app
+
+The single file is the easy one to hand around, but it unpacks itself into a
+temp folder on every launch. The --onedir build skips that and starts
+noticeably faster; ship the whole folder (zip it) and run the exe inside.
 
 The result is standalone - Python, PyQt6 and numpy are inside it - but NOT
 self-contained: it holds no Gothic data at all. At startup it looks for the
@@ -40,8 +44,8 @@ BUNDLE_ID = "org.gothicstudio.app"
 MACOS = sys.platform == "darwin"
 WINDOWS = sys.platform == "win32"
 
-# Qt ships a lot we never touch. Dropping these keeps the build near 45 MB
-# instead of 90 MB and shortens the onefile unpack on startup.
+# Qt ships a lot we never touch. Dropping these modules roughly halves the build
+# and shortens the onefile unpack on startup.
 EXCLUDE = [
     "PyQt6.QtWebEngineCore", "PyQt6.QtWebEngineWidgets", "PyQt6.QtWebChannel",
     "PyQt6.QtQml", "PyQt6.QtQuick", "PyQt6.QtQuick3D", "PyQt6.QtMultimedia",
@@ -52,20 +56,50 @@ EXCLUDE = [
     "PIL", "setuptools", "pip",     # numpy is NOT excluded: it accelerates the 3D view
 ]
 
+# Files PyInstaller's Qt hooks collect whatever the excludes above say, which the
+# app never loads. Matched as substrings of the bundled path, lowercased with
+# forward slashes. Every one of these is also unpacked to a temp folder on each
+# launch of a --onefile build, so dropping them speeds up startup as well.
+TRIM = [
+    "/opengl32sw.dll",              # ~20 MB software OpenGL; render3d.py draws without OpenGL
+    "/d3dcompiler_", "/libegl.dll", "/libglesv2.dll",    # ANGLE, same reason
+    "/qt6/translations/",           # Qt's own UI strings; the app never installs a QTranslator
+    "/plugins/imageformats/",       # only icon.png goes through Qt, and PNG is built in
+    "/plugins/iconengines/",        # SVG icons; the app draws its icons itself (ui.py)
+    "/plugins/styles/",             # native styles; main() switches to the built-in Fusion
+    "/plugins/generic/", "/plugins/tls/", "/plugins/networkinformation/",
+    "/qt6svg.dll", "/qt6network.dll",   # only the plugins above link these
+]
 
-def artifact():
+# Inserted into the generated .spec between Analysis() and PYZ(): the only point
+# where collected files can be dropped (--exclude-module only knows modules).
+SPEC_FILTER = '''
+_TRIM = {trim!r}
+def _keep(entry):
+    path = "/" + entry[0].replace("\\\\", "/").lower()
+    return not any(t in path for t in _TRIM)
+_before = len(a.binaries) + len(a.datas)
+a.binaries = [e for e in a.binaries if _keep(e)]
+a.datas = [e for e in a.datas if _keep(e)]
+print(f"trimmed {{_before - len(a.binaries) - len(a.datas)}} unused Qt files", flush=True)
+
+'''
+
+
+def artifact(onedir=False):
     """What this platform's build is actually called, once it exists."""
-    if WINDOWS:
-        return DIST / f"{NAME}.exe"
     if MACOS:
         return DIST / f"{NAME}.app"       # --windowed gives a bundle, not a file
-    return DIST / NAME
+    exe = f"{NAME}.exe" if WINDOWS else NAME
+    return DIST / NAME / exe if onedir else DIST / exe
 
 
 def _size_mb(path):
     if path.is_file():
         return path.stat().st_size / 1024 / 1024
-    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1024 / 1024
+    # skip symlinks: a bundle links some files under a second name
+    return sum(f.stat().st_size for f in path.rglob("*")
+               if f.is_file() and not f.is_symlink()) / 1024 / 1024
 
 
 def _mtime(path):
@@ -93,7 +127,8 @@ def _stamp_version(app):
 
 
 def main():
-    out = artifact()
+    onedir = "--onedir" in sys.argv[1:]
+    out = artifact(onedir)
     before = _mtime(out)
 
     # Windows will not let PyInstaller overwrite a running exe. It reports the
@@ -108,14 +143,11 @@ def main():
             print(f"ERROR: {out.name} is running. Close it and build again.")
             return 1
 
-    args = [
-        sys.executable, "-m", "PyInstaller",
-        "--noconfirm", "--clean",
-        "--onefile",
+    # Step 1: write the .spec. These options are the whole build description.
+    spec_args = [
+        "--onedir" if onedir else "--onefile",
         "--windowed",                 # no console/terminal behind the GUI
         "--name", NAME,
-        "--distpath", str(DIST),      # dist/GothicStudio[.exe|.app]
-        "--workpath", str(BUILD),
         "--specpath", str(BUILD),
         # npc_tabs is imported by name, but keep these explicit so a future
         # refactor to dynamic imports does not silently drop a tab.
@@ -129,20 +161,39 @@ def main():
         "--add-data", f"{ASSETS / 'icon.png'}{os.pathsep}assets",
     ]
     if WINDOWS:
-        args += ["--icon", str(ASSETS / "icon.ico")]
+        spec_args += ["--icon", str(ASSETS / "icon.ico")]
     if MACOS:
         # Without an identifier macOS treats every rebuild as a different app
         # and re-asks for any permission the user has already granted.
-        args += ["--osx-bundle-identifier", BUNDLE_ID,
-                 "--icon", str(ASSETS / "icon.icns")]
+        spec_args += ["--osx-bundle-identifier", BUNDLE_ID,
+                      "--icon", str(ASSETS / "icon.icns")]
     for module in EXCLUDE:
-        args += ["--exclude-module", module]
-    args.append(str(HERE / "studio.py"))
+        spec_args += ["--exclude-module", module]
+    spec_args.append(str(HERE / "studio.py"))
 
     # flush: our stdout is block-buffered when piped to a file, PyInstaller's
     # is not, so without this the banner lands after its output in any log.
-    print(f"building for {sys.platform} / {platform.machine()}...", flush=True)
-    result = subprocess.run(args, cwd=HERE)
+    kind = "folder (--onedir)" if onedir else "single file"
+    print(f"building a {kind} for {sys.platform} / {platform.machine()}...", flush=True)
+    BUILD.mkdir(exist_ok=True)
+    result = subprocess.run([sys.executable, "-m", "PyInstaller.utils.cliutils.makespec",
+                             *spec_args], cwd=HERE)
+    if result.returncode != 0:
+        return result.returncode
+
+    # Step 2: drop the Qt files the app never loads (see TRIM).
+    spec = BUILD / f"{NAME}.spec"
+    text = spec.read_text(encoding="utf-8")
+    if "\npyz = PYZ(" not in text:
+        print("ERROR: unexpected .spec layout from PyInstaller; cannot trim it.")
+        return 1
+    text = text.replace("\npyz = PYZ(", SPEC_FILTER.format(trim=TRIM) + "pyz = PYZ(", 1)
+    spec.write_text(text, encoding="utf-8")
+
+    # Step 3: build from it.
+    result = subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
+                             "--distpath", str(DIST),       # dist/GothicStudio[.exe|.app]
+                             "--workpath", str(BUILD), str(spec)], cwd=HERE)
     if result.returncode != 0:
         return result.returncode
 
@@ -150,7 +201,8 @@ def main():
         print(f"ERROR: {out.name} was not replaced - the build did not succeed.")
         return 1
 
-    print(f"\n{out}  ({_size_mb(out):.1f} MB)")
+    shipped = out.parent if onedir and not MACOS else out    # the folder is what ships
+    print(f"\n{out}  ({_size_mb(shipped):.1f} MB)")
     if MACOS:
         # The bare unix binary sits next to the bundle and confuses people into
         # double-clicking it, which opens a Terminal window. The .app is the
@@ -158,6 +210,8 @@ def main():
         stray = DIST / NAME
         if stray.is_file():
             stray.unlink()
+        elif stray.is_dir():
+            shutil.rmtree(stray)
         _stamp_version(out)
         print("Unsigned: first launch needs right-click > Open, or\n"
               f"  xattr -dr com.apple.quarantine '{out}'")

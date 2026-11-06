@@ -10,9 +10,18 @@ into the mod Gothic Studio is using.
 
 ## Run it
 
-**As an exe** — double-click `dist/GothicStudio.exe` (after building it). Nothing to install.
+**From source, like an app** (the main way): double-click
+`make-shortcut.bat` once. It sets up `.venv` if needed and puts a **Gothic
+Studio** shortcut on the Desktop and in the Start menu that starts the source
+version with no console window, using the app's own icon on the taskbar. Edits
+to the `.py` files take effect on the next launch, with no build step. Run it
+again if you move the folder. If the app does not appear, `run.bat` runs the
+same thing with any error visible.
 
-**From source** — for editing:
+**As an exe** — double-click `dist/GothicStudio.exe` (after building it). Nothing to install.
+This is the one to give to other people.
+
+**From source, in a terminal** — for editing:
 
 ```
 pip install -r requirements.txt
@@ -27,7 +36,7 @@ Details and troubleshooting in [BUILDING-MACOS.md](BUILDING-MACOS.md).
 
 ## The exe
 
-`dist/GothicStudio.exe` (~34 MB) bundles Python and PyQt6, but **not** the mod:
+`dist/GothicStudio.exe` bundles Python, PyQt6 and numpy, but **not** the mod:
 it reads `Content/` live, the same as the source version, so edits you make to
 scripts show up in the pickers straight away.
 
@@ -84,8 +93,18 @@ python build_exe.py
 ```
 
 Takes ~30s and overwrites `dist/GothicStudio.exe` — or produces
-`dist/GothicStudio.app` on macOS, `dist/GothicStudio` on Linux. Build scratch
-goes to `build/` and is deleted afterwards.
+`dist/GothicStudio.app` on macOS. Build scratch goes to `build/` and is deleted
+afterwards.
+
+The build leaves out the parts of Qt the app never loads (the software OpenGL
+renderer, Qt's translations, image-format and style plugins; the list is
+`TRIM` in `build_exe.py`). That makes the exe smaller and faster to start,
+because a single-file exe unpacks everything into a temp folder on every
+launch. For the fastest start, build a folder instead and ship it zipped:
+
+```
+python build_exe.py --onedir    # dist/GothicStudio/GothicStudio.exe + _internal/
+```
 
 > The exe is a build artefact; `dist/` and `build/` are git-ignored.
 
@@ -125,7 +144,8 @@ Plus:
 | File | What it is |
 |---|---|
 | `studio.py` | The window. Two tabs + the Compile-check button. Start here. |
-| `build_exe.py` | PyInstaller wrapper that produces `dist/GothicStudio.exe`. |
+| `build_exe.py` | PyInstaller wrapper that produces `dist/GothicStudio.exe` (`--onedir` for a faster-starting folder). |
+| `make-shortcut.bat` | Desktop / Start menu shortcut that runs the source version like an app. |
 | `selftest.py` | Headless end-to-end check: drives every widget, then compiles with gdc. Without a mod it runs only the data-independent checks. |
 | `project.py` | **Every path and the encoding.** Change this if you move the tool. |
 | `gamedata.py` | Scrapes `Content/` for real identifiers. `python gamedata.py` prints what it found. |
