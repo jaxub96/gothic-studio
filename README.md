@@ -1,319 +1,75 @@
 # Gothic Studio
 
-NPC creator + dialog editor in one app. A merge of `Gothic-2-NPC-Studio`
-and `tools/Daedalogue`, with the Gothic 1 data replaced by whatever is actually
-in `Content/`.
-
-**Your mod's own scripts** - guilds, constants, items, sample NPCs, dialogs
-and a quest - live in [`mod/`](mod/README.md). `python mod/install.py` puts them
-into the mod Gothic Studio is using.
+NPC creator + dialog editor in one app, reading whatever is actually in your
+Gothic II `Content/`. Your mod's own scripts (guilds, constants, items, sample
+NPCs, dialogs, a quest) live in [`mod/`](mod/README.md); `python mod/install.py`
+installs them into the mod Gothic Studio is using.
 
 ## Run it
 
-**From source, like an app** (the main way): double-click
-`make-shortcut.bat` once. It sets up `.venv` if needed and puts a **Gothic
-Studio** shortcut on the Desktop and in the Start menu that starts the source
-version with no console window, using the app's own icon on the taskbar. Edits
-to the `.py` files take effect on the next launch, with no build step. Run it
-again if you move the folder. If the app does not appear, `run.bat` runs the
-same thing with any error visible.
+- **From source, like an app** (main way) - run `make-shortcut.bat` (Windows) or
+  `./make-shortcut.sh` (macOS) once. It sets up `.venv` and puts a **Gothic
+  Studio** shortcut with the app icon on the Desktop (and Start menu / `~/Applications`).
+  No console window; edits to the `.py` files apply on the next launch. Re-run
+  it if you move the folder. `run.bat` / `./run.sh` do the same with errors visible.
+- **In a terminal:** `pip install -r requirements.txt`, then `python studio.py`
+  (`--dev` needs no Gothic II; it copies `devdata/` to `.devmod/`).
+- **As an exe / app:** `build-windows.bat` or `./build-macos.sh` produces
+  `dist/GothicStudio.exe` / `.app` (~30s; add `--onedir` to `python build_exe.py`
+  for a faster-starting folder). `dist/` and `build/` are git-ignored. Mac
+  details: [BUILDING-MACOS.md](BUILDING-MACOS.md).
 
-**As an exe** — double-click `dist/GothicStudio.exe` (after building it). Nothing to install.
-This is the one to give to other people.
+## Finding the mod
 
-**From source, in a terminal** — for editing:
+The app holds no game data, so it needs to know where Gothic II lives, in order:
 
-```
-pip install -r requirements.txt
-python studio.py          # or run.bat on Windows, ./run.sh on macOS/Linux
-python studio.py --dev    # no Gothic II needed (dev.bat); a sample mod in devdata/ (with a complex NPC, teaching and dialog) is copied to .devmod/
-```
+1. `GOTHIC_SCRIPTS` environment variable.
+2. The folder you pick on first run (change it with **Change mod folder** in the
+   status bar; restart needed). Saved in `config.json` under `%APPDATA%\GothicStudio`,
+   `~/Library/Application Support/GothicStudio` or `~/.config/GothicStudio`.
+   Delete it to be asked again.
+3. Walking up from the app looking for `Content/Gothic.src`.
 
-**On a Mac** — `cd gothic-studio && ./build-macos.sh` builds
-`dist/GothicStudio.app` from scratch. The app is portable (no Windows-only code),
-but PyInstaller cannot cross-compile, so it has to run on the Mac itself.
-Details and troubleshooting in [BUILDING-MACOS.md](BUILDING-MACOS.md).
+`GothicStudio.exe --check > check.txt` reports the resolved paths and what was
+found. Dark mode is a status-bar toggle, saved in `config.json`.
 
-## The exe
+## Layout
 
-`dist/GothicStudio.exe` bundles Python, PyQt6 and numpy, but **not** the mod:
-it reads `Content/` live, the same as the source version, so edits you make to
-scripts show up in the pickers straight away.
-
-### Finding the mod
-
-The app holds no game data at all, so it has to be told where a Gothic II
-install lives. Three ways, in order of precedence:
-
-1. **`GOTHIC_SCRIPTS`** — environment variable, a one-off override.
-2. **The folder you picked** — asked for on first run when nothing else works,
-   then remembered. Change it later with **Change mod folder** in the status
-   bar; that needs a restart to take effect.
-3. **Walking up from its own location** looking for `Content/Gothic.src`. This
-   only works if the app is placed inside the mod's tree (e.g. its `tools/`
-   folder); from `dist/` of a standalone checkout, use 1 or 2.
-
-The saved folder lives in `%APPDATA%\GothicStudio\config.json` on Windows,
-`~/Library/Application Support/GothicStudio/config.json` on macOS, and
-`~/.config/GothicStudio/config.json` elsewhere. Delete it to be asked again.
-
-**Dark mode:** click **Dark mode** (or **Light mode**) in the status bar. The
-window switches at once and keeps whatever you have open; the choice is saved in
-the same `config.json` (`"theme": "dark"`) for next time.
-
-**Routines:** the Routine tab holds a list of routines, each a time range
-(HH:MM to HH:MM) with its own activity and waypoint, written as one `TA_` line
-each. **+ Add routine** fills the first free time, or splits the last routine
-when the day is full. The line under the list (and **Validate**) points out
-gaps, where the NPC would have nothing to do, and overlaps.
-
-The status bar always shows the path actually in use.
-
-```
-GothicStudio.exe --check > check.txt     # where am I, and what can I see?
-```
-
-The exe is built `--windowed`, so `--check` has no console to print to —
-redirect it to a file. It reports the resolved paths and how many items,
-guilds, routines and waypoints it found.
-
-**Rebuild after editing the source:**
-
-```
-build-windows.bat         # Windows - sets up the venv too, or double-click it
-./build-macos.sh          # macOS/Linux
-```
-
-Both are re-runnable and do the same four things: check Python, create or reuse
-`.venv`, install what is missing, then run `build_exe.py`. To skip straight to
-the build in an environment you have already set up:
-
-```
-python build_exe.py
-```
-
-Takes ~30s and overwrites `dist/GothicStudio.exe` — or produces
-`dist/GothicStudio.app` on macOS. Build scratch goes to `build/` and is deleted
-afterwards.
-
-The build leaves out the parts of Qt the app never loads (the software OpenGL
-renderer, Qt's translations, image-format and style plugins; the list is
-`TRIM` in `build_exe.py`). That makes the exe smaller and faster to start,
-because a single-file exe unpacks everything into a temp folder on every
-launch. For the fastest start, build a folder instead and ship it zipped:
-
-```
-python build_exe.py --onedir    # dist/GothicStudio/GothicStudio.exe + _internal/
-```
-
-> The exe is a build artefact; `dist/` and `build/` are git-ignored.
-
-## What changed vs. the two old tools
-
-Both old tools produced `.d` files that **did not compile**. Verified with
-the mod's `tools/gdc-windows-x64.exe`:
-
-| Old output | Error | Now emits |
-|---|---|---|
-| `Mdl_SetNpcVisual(...)` | undeclared | `B_SetNpcVisual(self, MALE, head, face, bodyTex, armor)` |
-| `B_Scale(self)` | undeclared | (dropped - `B_SetNpcVisual` scales internally) |
-| `TA_Position(...)` | undeclared | a real `TA_*` picked from `gamedata.routines()` |
-| `B_GiveXP(n)` | undeclared | `B_GivePlayerXP(n)` |
-| `AI_StartState(self, ZS_FOLLOW, ...)` | undeclared | `ZS_Follow_Player` |
-| log topics | never declared | `const string TOPIC_X = "...";` written to `Log_Entries/` |
-
-Plus:
-
-- **Encoding.** Files are written **CP1250**, not UTF-8. The old tools wrote
-  UTF-8, which puts mojibake in-game (this install is Polish).
-- **Output location.** Saves into `Content/Story/NPC/` and
-  `Content/Story/Dialoge/` so `Gothic.src` actually picks the files up. Dialog
-  files are named `DIA*.d` because line 295 globs `STORY\DIALOGE\DIA*.d` - a
-  file not starting with `DIA` is silently never compiled.
-- **No hardcoded game data.** Guilds, items, armors, heads, faces, tactics,
-  routines, waypoints and NPC ids are all read out of `Content/` at startup.
-  The old `data/*.py` tables were Gothic 1: 512 of their 523 item ids did not
-  exist here.
-- **EXIT block.** Only emitted if this NPC does not already have one somewhere
-  else, otherwise you get `redefinition of DIA_<NPC>_EXIT`.
-- **The link.** The NPC tab's instance name feeds the Dialog tab's NPC ID, so
-  you type the identifier once.
-
-## Files
-
-| File | What it is |
+| File | Role |
 |---|---|
-| `studio.py` | The window. Two tabs + the Compile-check button. Start here. |
-| `build_exe.py` | PyInstaller wrapper that produces `dist/GothicStudio.exe` (`--onedir` for a faster-starting folder). |
-| `make-shortcut.bat` | Desktop / Start menu shortcut that runs the source version like an app. |
-| `selftest.py` | Headless end-to-end check: drives every widget, then compiles with gdc. Without a mod it runs only the data-independent checks. |
-| `project.py` | **Every path and the encoding.** Change this if you move the tool. |
-| `gamedata.py` | Scrapes `Content/` for real identifiers. `python gamedata.py` prints what it found. |
-| `mod/` | The mod's script package (guilds, constants, sample content) and its installer. See [mod/README.md](mod/README.md). |
-| `labels.py` | Readable names for constants (`GIL_MIL` -> "Militia"). Presentation only. |
-| `textures.py` | Reads Gothic's ZTEX/DXT textures and the `.vdf` archives. `python textures.py` self-checks. |
-| `texture_view.py` | Turns those into the preview panels. |
-| `mesh.py` | Reads compiled meshes (.MRM/.MMB/.MDM) and the skeleton (.MDH). `python mesh.py` self-checks. |
-| `render3d.py` | Software rasteriser for the character preview - no OpenGL. |
-| `model_view.py` | The draggable 3D panel on the NPC page. |
-| `fastpath.py` | Optional numpy acceleration. Absent numpy, everything still works. |
-| `benchmark.py` | Proves whether numpy actually helps, stage by stage. |
-| `theme.py` | All colours (light and dark palettes), fonts, sizes. Nothing else hardcodes a colour. |
-| `npc_model.py` | The `Npc` object - one flat list of fields. |
-| `npc_gen.py` | `Npc` -> `.d` text, plus `validate()`. |
-| `startup_gen.py` | Adds/removes `Wld_InsertNpc` lines in `Story/Startup.d` (the Routine tab's Spawn section). |
-| `npc_page.py` | The NPC tab. |
-| `npc_tabs/*.py` | One file per form tab. Each exposes `build(parent, npc, handlers)`. |
-| `npc_handlers.py` | The 2-method glue between widgets and the model. |
-| `ui.py` | **The component set.** Every button, field, label and layout comes from here. |
-| `dialog_gen.py` | Dialog data model, code generation, and the `.d` parser. |
-| `dialog_page.py` | The Dialog tab. |
-| `dialog_widgets.py` | The chat-bubble editor widgets. |
+| `studio.py` | The window; start here. |
+| `project.py`, `gamedata.py` | Paths/encoding; scrapes `Content/` for real identifiers. |
+| `npc_*.py`, `npc_tabs/` | NPC model, `.d` generation, and one file per form tab. |
+| `dialog_*.py` | Dialog model/codegen/parser, tab and chat-bubble widgets. |
+| `startup_gen.py`, `teach_gen.py` | `Wld_InsertNpc` lines in `Startup.d`; teaching dialogs. |
+| `textures.py`, `mesh.py`, `render3d.py`, `model_view.py` | Gothic texture/mesh readers and the software 3D preview. |
+| `ui.py`, `theme.py` | The component set and all colours/fonts. |
+| `selftest.py` | Headless end-to-end check, then compiles with gdc. |
 
-## UI components
+## UI rules
 
-`ui.py` is the only module that writes a stylesheet. Everything else builds
-screens out of it, so the app looks the same everywhere and a theme change is
-one edit.
-
-```python
-import ui
-
-ui.section(layout, "Combat")                       # titled group + divider
-ui.field(layout, "Fight tactic", ui.dropdown(...)) # label above control
-ui.field(layout, "Level", ui.slider(1, 100, ...))  # slider shows its value
-ui.field_row(layout, "Starts at", ui.spin(...))    # label beside control
-layout.addWidget(ui.checkbox("Immortal", ...))
-layout.addWidget(ui.radio_row("1H weapon", LEVELS, ...))
-row.addWidget(ui.button("Save to mod", self._save, ui.PRIMARY))
-```
-
-| | |
-|---|---|
-| **Text** | `heading` `label` `hint` `value_label` `panel_header` `placeholder` |
-| **Inputs** | `text_input` `dropdown` `search_dropdown` `search_input` `number` `choice` `checkbox` `radio_row` `toggle_row` `slider` |
-| **Lists** | `listbox` `tree` |
-| **Buttons** | `button(text, on_click, variant)` - `PRIMARY` `DEFAULT` `SUBTLE` `DANGER`; `icon_button` |
-| **Layout** | `row` `column` `section` `field` `field_group` `divider` `toolbar` |
-| **Page frame** | `SidePanel` (preview tabs + status + actions), `page(work, side)` |
-
-**Dropdowns drop downwards.** `combobox-popup: 0` is set on every combo. Without
-it Qt shows the list as a menu centred on the current item, so as soon as the
-selection is not the first entry the list is drawn straight over the field.
-With it off the list appears below and scrolls at `POPUP_ITEMS` rows.
-
-**One alignment grid.** `field()` puts every label in the same left column
-(`LABEL_W`) and every control at the same x, so a form reads as a grid rather
-than a ragged edge. Controls that set their own width keep it; the rest fill
-the row. Use `field_group()` when several short values belong on one line -
-Name / ID / Level are one thought, not three rows.
-
-**Pick the control that matches the data.** This is the rule that gets broken
-quietly, so it is worth spelling out:
-
-| The value is | Use | Not |
-|---|---|---|
-| an exact number you look up (attributes, level, id) | `number` | a slider - you cannot hit 123 by dragging |
-| a handful of named states (chapter, magic circle) | `choice` | a slider over 0-6 |
-| two or three exclusive options (gender, talent rank) | `toggle_row` / `radio_row` | a dropdown that hides half the choice |
-| one of a long list (faces, routines, waypoints) | `search_dropdown` / `search_input` | a plain dropdown you must scroll |
-| a genuinely continuous thing judged by eye (build) | `slider` | |
-
-Exactly one slider survives in the app - the fatness dial on the Visual tab,
-where you drag and watch the model change. Everything else that was a slider
-is now a number or a list.
-
-Three rules:
-
-1. **No stylesheets outside `ui.py`.** Need a new look? Add a variant there.
-2. **One control, one call.** Each takes its value and its callback, so wiring
-   reads the same everywhere.
-3. **Words, not just glyphs.** A tooltip is not discoverable; every button
-   carries a label.
-
-Both pages are the same shape: what you edit on the left, `SidePanel` on the
-right with preview tabs, a status line, and Validate / Save as / Save to mod in
-the same corner. Use `ui.page(work_area, side_panel)` and they stay that way.
-
-Before this existed the app had 11 different `QLabel` styles, 5 button styles,
-5 font sizes and 4 button heights. It now has one definition per role, and
-containers are separated by tone and spacing rather than outlines.
-
-## Adding things
-
-**A new field on the NPC** - add it to `npc_model.py`, emit it in
-`npc_gen.build_npc()`, add a widget in the relevant `npc_tabs/*_tab.py`. Three
-edits, all obvious.
-
-**A new dialog effect** (give item, set routine, ...) - add a branch in
-`dialog_gen._entry_lines()` and a matching regex near `_LINE_RE` if you want it
-to parse back. The UI row is in `dialog_widgets.EffectInsertRow`.
-
-**A new picker list** - add a function to `gamedata.py`. Copy any existing one;
-they are all 3 lines.
-
-## Performance
-
-The 3D preview is pure Python by default and uses numpy where numpy actually
-wins. `python benchmark.py` measures both paths in separate processes and
-checks they produce an identical image:
-
-```
-stage                      pure python       numpy    speed-up
---------------------------------------------------------------
-decode 512x512 DXT              83.3ms       7.7ms       10.8x
-decode 256x128 DXT               9.9ms       1.1ms        8.7x
-render 160x230                  24.2ms      23.6ms        1.0x   (pure path chosen)
-render 320x460                  63.1ms      59.4ms        1.1x
-render 640x920                 215.5ms      84.5ms        2.5x
-cold frame (both)              157.9ms      70.0ms        2.3x
-
-identical output: yes
-```
-
-So the app does both:
-
-* **texture decoding always uses numpy** when installed - it is bulk per-pixel
-  work and ~10x faster;
-* **rasterising switches on frame size.** numpy pays its per-call overhead
-  ~1300 times a frame, so its cost is nearly flat while pure Python grows
-  linearly. They cross at about 125k pixels
-  (`render3d.RASTER_NUMPY_MIN_PIXELS`). Dragging deliberately renders small
-  frames, which is exactly where pure Python is faster.
-
-Re-run the benchmark if you touch the renderer; the threshold is measured, not
-guessed.
-
-## Validate and Compile check
-
-- **Validate** (on both tabs) - checks every identifier against `gamedata`.
-  Instant, catches typos before you save.
-- **Compile check** (status bar) - runs `gdc` over the whole mod, same as the
-  VS Code "compile check" task. Takes ~3 seconds.
+`ui.py` is the only module that writes a stylesheet; screens are built from its
+components (`section`, `field`, `button`, `dropdown`, `number`, ...). Add a
+variant there rather than styling elsewhere. Pick the control that fits the
+data: `number` for exact values, `choice`/`toggle_row` for few named states,
+`search_dropdown` for long lists, a slider only for continuous values judged by eye.
 
 ## What Save to mod writes
 
 | Where | File | When |
 |---|---|---|
 | `Story/NPC/` | the NPC `.d` | always |
-| `Story/Dialoge/` | `DIA_<npc>_Teach.d` | when talents are ticked |
-| `Story/Startup.d` | one `Wld_InsertNpc` line in `STARTUP_<world>` | when *Put this NPC into the world* is ticked (Routine tab); unticking removes it |
+| `Story/Dialoge/` | `DIA_<npc>_Teach.d` | talents ticked |
+| `Story/Startup.d` | one `Wld_InsertNpc` line | *Put this NPC into the world* ticked |
 
-The Dialog tab's **Save** writes `Story/Dialoge/DIA_<npc>.d` and, for any new log
-topic, `Story/Log_Entries/LOG_Constants_<npc>.d`. **Save as...** never touches
-`Startup.d`.
+The Dialog tab's **Save** writes `Story/Dialoge/DIA_<npc>.d` (and log topics to
+`Story/Log_Entries/`). Files are CP1250; dialog files must be named `DIA*.d`
+or `Gothic.src` never compiles them. **Validate** checks identifiers instantly;
+**Compile check** runs `gdc` over the mod (~3s).
 
 ## Known limits
 
-- The dialog `.d` parser is regex-based. It round-trips files this tool wrote
-  and simple vanilla ones; it is not a general Daedalus parser.
-- `B_SetAttributesToChapter` (Stats tab) overwrites `level`. That is the
-  engine's behaviour, not a bug here - the checkbox says so.
-- Waypoints are read from the `.zen` files in `Data/Worlds` (next to `Scripts`),
-  plus `.check/worldnames.json` if one exists. With no worlds folder the
-  waypoint field is a free-text box instead of a searchable list.
-- Women's face textures that no script names (V137-V158 here) are listed as
-  `Face_Babe_<n>`, and the female skins as `BodyTex_Babe_<n>`; both are written
-  to the `.d` file as the bare number. Which skins are female
-  (`FEMALE_BODY_TEXTURES`) and which voices (`FEMALE_VOICES`) is set in
-  `gamedata.py`.
+- The dialog `.d` parser is regex-based: it round-trips this tool's files and
+  simple vanilla ones, not arbitrary Daedalus.
+- `B_SetAttributesToChapter` overwrites `level` (engine behaviour).
+- Waypoints come from `.zen` files in `Data/Worlds`; without them the field is free text.

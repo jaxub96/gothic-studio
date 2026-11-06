@@ -494,9 +494,10 @@ def main():
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    # On macOS this would replace the Dock icon with the bare G; the bundle's
-    # .icns already has the right one there.
-    if sys.platform != "darwin":
+    # In the built macOS app this would replace the Dock icon with the bare G;
+    # the bundle's .icns already has the right one there. From source the
+    # process is Python itself, so set it (make-shortcut.sh).
+    if sys.platform != "darwin" or not getattr(sys, "frozen", False):
         app.setWindowIcon(QIcon(str(ICON)))
 
     theme.resolve_fonts()
