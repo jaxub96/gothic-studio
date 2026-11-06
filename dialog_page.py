@@ -19,7 +19,7 @@ import config
 import gamedata
 import project
 import ui
-from dialog_gen import (DialogBlock, export_block_name, export_followup_name,
+from dialog_gen import (DialogBlock, bind_choices, requires_instance, export_block_name, export_followup_name,
                         generate_constants_file, generate_dia_file,
                         export_plain_dialog, parse_dia_file, parse_plain_dialog,
                         resolve_condition, sanitize, KNOWSINFO_RE)
@@ -62,6 +62,7 @@ class DialogPage(QWidget):
         self.block_items = []
         self.current_block_idx = -1
         self.current_file_path = None
+        self._scene_min = 0
         self._npc_id_touched = False
         self._npc_name_touched = False
         # What the editor looked like at the last save / open / new. Anything
@@ -204,10 +205,19 @@ class DialogPage(QWidget):
                                 ui.PRIMARY, "Add another conversation topic"))
         return left
 
+    MAX_SCENE_COL = 260
+
+    def _fit_scene_column(self):
+        """Never narrower than the tab bar (so its rule lines up with the Dialog tab),
+        wider when a scene name needs it, up to a limit; beyond that names elide."""
+        want = max([it.needed_width() for it in self.block_items] or [0]) + 16 + 2
+        self.scene_col.setFixedWidth(max(self._scene_min, min(want, self.MAX_SCENE_COL)))
+
     def set_scene_width(self, width):
         """The scene list is as wide as the tab bar, so its right rule continues the
         edge of the Dialog tab (the NPC tab does the same). It is fixed."""
-        self.scene_col.setFixedWidth(width)
+        self._scene_min = width
+        self._fit_scene_column()
 
     def set_npc_id(self, instance_name):
         """Called whenever the NPC page rebuilds its instance name.
@@ -246,12 +256,23 @@ class DialogPage(QWidget):
 
     # ------------------------------------------------------- scene tree wiring
     def _make_editor(self, is_followup):
-        return BlockEditor(
+        ed = BlockEditor(
             on_change=self._refresh_preview,
             on_choice_added=self._on_choice_added,
             on_choice_removed=self._on_choice_removed,
             is_followup=is_followup,
         )
+        ed.scene_names = lambda: self._other_scene_names(ed)
+        return ed
+
+    def _other_scene_names(self, editor):
+        """Every top-level scene except `editor`'s own: what a scene can require."""
+        names = []
+        for b, ed in zip(self.blocks, self.block_editors):
+            name = ed.name_edit.text().strip() or b.name
+            if ed is not editor and not b.is_followup and not b.is_exit and name:
+                names.append(name)
+        return names
 
     def _is_descendant(self, block, ancestor):
         cur = block.parent_block
@@ -271,11 +292,19 @@ class DialogPage(QWidget):
     def _add_block(self, block=None, parent_idx=None):
         b = block if block is not None else DialogBlock()
         pos = self._find_insert_pos_after(parent_idx) if parent_idx is not None else len(self.blocks)
+        if block is None and self.blocks:
+            # The commonest condition by far: the scene before has been heard.
+            self._collect_blocks()           # settles default names first
+            previous = [x for x in self.blocks if not x.is_followup and not x.is_exit]
+            if previous:
+                b.requires = previous[-1].name
 
         self.blocks.insert(pos, b)
         ed = self._make_editor(is_followup=b.is_followup)
         if block is not None:
             ed.load_block(b)
+        elif b.requires:
+            ed.set_requires(b.requires)        # a brand-new scene starts with its default
         self.block_editors.insert(pos, ed)
         self.editor_stack.addWidget(ed)
 
@@ -367,6 +396,14 @@ class DialogPage(QWidget):
         return self.npc_id_edit.currentText().strip()
 
     def _collect_blocks(self):
+        # A scene that was renamed: whatever required it by its old name follows it.
+        for b, ed in zip(self.blocks, self.block_editors):
+            new = ed.name_edit.text().strip()
+            if b.name and new and new != b.name and not b.is_followup:
+                for other in self.block_editors:
+                    if other.requires_text().upper() == b.name.upper():
+                        other.set_requires(new)
+
         for i, ed in enumerate(self.block_editors):
             b = self.blocks[i]
             fresh = ed.get_block()
@@ -375,11 +412,14 @@ class DialogPage(QWidget):
             b.permanent = fresh.permanent
             b.important = fresh.important
             b.is_trade = fresh.is_trade
+            b.requires = fresh.requires
+            b.extra_conditions = fresh.extra_conditions
             b.condition_expr = fresh.condition_expr
             b.stop_after = fresh.stop_after
             b.entries = fresh.entries
             b.choices = fresh.choices
             self.block_items[i].update_name(b.name)
+        self._fit_scene_column()
 
         n = 1
         for b in self.blocks:
@@ -397,6 +437,8 @@ class DialogPage(QWidget):
             for cw in ed.get_choice_widgets():
                 if cw.linked_block is not None:
                     cw.func.setText(cw.linked_block.func_name)
+                    # the Back box on a choice row decides how its reply ends
+                    cw.linked_block.clear_after = cw.back_cb.isChecked()
         return self.blocks
 
     def _emit_exit(self):
@@ -454,12 +496,22 @@ class DialogPage(QWidget):
                 if kind == "routine" and e.routine and e.routine.upper() != "START":
                     pass  # routine names are per-NPC strings, not global symbols
 
-        # Npc_KnowsInfo must name a dialog instance: one in Content/ or a scene of this file
+        # A required scene must exist here or in Content/; Npc_KnowsInfo in a hand-typed
+        # condition must name a dialog instance too.
         own = {export_block_name(ni or "NPC", b.name).upper() for b in blocks if not b.is_followup and not b.is_exit}
         for b in blocks:
-            if b.is_followup or not b.condition_expr.strip():
+            if b.is_followup:
                 continue
-            for m in KNOWSINFO_RE.finditer(resolve_condition(b.condition_expr, ni or "NPC", blocks)):
+            req = b.requires.strip()
+            if req:
+                inst = requires_instance(req, ni or "NPC", blocks)
+                if inst.upper() == export_block_name(ni or "NPC", b.name).upper():
+                    problems.append(f"Scene '{b.name}' requires itself, so it can never be offered.")
+                elif inst.upper() not in own and gamedata.unknown("info", inst):
+                    problems.append(f"Scene '{b.name}': requires '{req}', which is no scene of this "
+                                    "file and no dialog in Content/")
+            typed = "\n".join(list(b.extra_conditions) + [b.condition_expr])
+            for m in KNOWSINFO_RE.finditer(resolve_condition(typed, ni or "NPC", blocks)):
                 if m.group(2).upper() not in own and gamedata.unknown("info", m.group(2)):
                     problems.append(f"Scene '{b.name}': condition names '{m.group(2)}', which is no dialog "
                                     "(use a scene name of this NPC or a DIA_... instance)")
@@ -559,10 +611,23 @@ class DialogPage(QWidget):
                 self, "Nothing Found",
                 "No dialog lines found.\nExpected:\n\n-- Scene Name --\nNPC - line\nHero - line")
             return
+        # Scenes (and the replies under them) join whatever is already open. Each
+        # new scene requires the one before it, the usual way a conversation runs.
+        keep = self._npc_id_touched, self._npc_name_touched
+        existing = self._collect_blocks() if self.blocks else []
+        bind_choices(blocks, self._npc_id() or "NPC_ID")
+        previous = next((x for x in reversed(existing) if not x.is_followup and not x.is_exit), None)
         for b in blocks:
-            self._add_block(b)
-        self.side.say(f"Imported {len(blocks)} scene(s) from {os.path.basename(path)}"
-                      f"  (read as {encoding})")
+            if not b.is_followup:
+                if previous is not None:
+                    b.requires = previous.name
+                previous = b
+        self._load_project(self._npc_name(), self._npc_id(), existing + blocks)
+        self._npc_id_touched, self._npc_name_touched = keep
+        replies = sum(1 for b in blocks if b.is_followup)
+        self.side.say(f"Imported {len(blocks) - replies} scene(s)"
+                      + (f" and {replies} choice repl{'y' if replies == 1 else 'ies'}" if replies else "")
+                      + f" from {os.path.basename(path)}  (read as {encoding})")
 
     def _open(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -623,14 +688,13 @@ class DialogPage(QWidget):
             self.editor_stack.setCurrentWidget(self.placeholder)
         for b in blocks:
             _, ed = self._add_block(b)
-            if not b.is_followup:
-                for cw in ed.get_choice_widgets():
-                    child = next((c for c in blocks
-                                  if c.is_followup and c.func_name == cw.func.text()
-                                  and c.parent_block is b), None)
-                    if child is not None:
-                        cw.linked_block = child
-                        cw.lock_func(child.func_name)
+            for cw in ed.get_choice_widgets():
+                child = next((c for c in blocks
+                              if c.is_followup and c.func_name == cw.func.text()
+                              and c.parent_block is b), None)
+                if child is not None:
+                    cw.linked_block = child
+                    cw.lock_func(child.func_name)
         if blocks:
             self._select_block(0)
         self._refresh_preview()
