@@ -70,6 +70,7 @@ BODY = {
     "BodyTex_B": "Black",
     "BodyTex_T": "Tattooed",
     "BodyTex_Player": "Player",
+    "BodyTex_Man_9": "Player 2",
 }
 
 OVERLAY = {
