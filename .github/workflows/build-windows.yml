@@ -1,11 +1,15 @@
 # Builds GothicStudio.exe on a Windows runner (PyInstaller cannot cross-compile, so this
-# cannot be done from a Mac). Run it from the Actions tab, or:
+# cannot be done from a Mac). It runs on every pull request to main, with the exe as a
+# run artifact. Once this file is on main it can also be run by hand from the Actions
+# tab, or:
 #
-#     gh workflow run build-windows.yml                        # just build; exe is a run artifact
+#     gh workflow run build-windows.yml                        # just build
 #     gh workflow run build-windows.yml -f release_tag=v1.1    # ...and attach it to that release
 name: Build Windows
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       release_tag:
