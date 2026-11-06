@@ -231,6 +231,9 @@ def _const_values(prefix):
 
 FEMALE_FACE_PREFIX = "Face_Babe_"
 FEMALE_BODY_PREFIX = "BodyTex_Babe_"
+#: Male skins no script names (V9 here); offered as BodyTex_Man_<n>.
+MALE_BODY_PREFIX = "BodyTex_Man_"
+BODY_PREFIXES = (FEMALE_BODY_PREFIX, MALE_BODY_PREFIX)
 
 #: HUM_BODY_NAKED_V<n>_C0 textures drawn for the female body (V4-V7 are bare
 #: skin in four tones, V11 and V12 are special outfits). Found by rendering
@@ -271,29 +274,37 @@ def face_values():
 def body_texture_values():
     """BodyTex_N -> 1. The number is what picks HUM_BODY_NAKED_V<n>_C0.
 
-    The female skins are added as BodyTex_Babe_<n>.
+    Skins no script names are added: BodyTex_Babe_<n> for the female ones,
+    BodyTex_Man_<n> for any other.
     """
     import textures
 
     out = dict(_const_values("BodyTex_"))
     named = set(out.values())
-    for n in FEMALE_BODY_TEXTURES:
-        if n not in named and f"HUM_BODY_NAKED_V{n}_C0" in textures._index():
-            out[f"{FEMALE_BODY_PREFIX}{n}"] = n
+    found = sorted(int(m.group(1)) for key in textures._index()
+                   if (m := re.fullmatch(r"HUM_BODY_NAKED_V(\d+)_C0", key)))
+    for n in found:
+        if n in named:
+            continue
+        prefix = FEMALE_BODY_PREFIX if n in FEMALE_BODY_TEXTURES else MALE_BODY_PREFIX
+        out[f"{prefix}{n}"] = n
     return out
 
 
 def _code(name, prefix):
     """What to write in a script: the number for a synthesised name."""
     name = str(name)
-    return name[len(prefix):] if name.lower().startswith(prefix.lower()) else name
+    for p in ((prefix,) if isinstance(prefix, str) else prefix):
+        if name.lower().startswith(p.lower()):
+            return name[len(p):]
+    return name
 
 
 def _from_code(code, values, prefix):
     code = str(code).strip()
     if code.isdigit():
         for name, value in values.items():
-            if value == int(code) and name.startswith(prefix):
+            if value == int(code) and name.startswith(prefix if isinstance(prefix, str) else tuple(prefix)):
                 return name
     return code
 
@@ -307,11 +318,11 @@ def face_from_code(code):
 
 
 def body_code(body):
-    return _code(body, FEMALE_BODY_PREFIX)
+    return _code(body, BODY_PREFIXES)
 
 
 def body_from_code(code):
-    return _from_code(code, body_texture_values(), FEMALE_BODY_PREFIX)
+    return _from_code(code, body_texture_values(), BODY_PREFIXES)
 
 
 @lru_cache
