@@ -15,7 +15,7 @@ from pathlib import Path
 if "--dev" in sys.argv:       # must be set before project is imported
     os.environ.setdefault("GOTHIC_STUDIO_DEV", "1")
 
-from PyQt6.QtCore import QProcess, QSize, Qt
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QColor, QIcon, QKeySequence, QPalette, QShortcut
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QMenu, QMessageBox, QStatusBar, QToolButton,
                              QTabWidget)
@@ -43,6 +43,44 @@ def ui_scale():
         return max(0.4, float(os.environ.get("QT_SCALE_FACTOR") or 1))
     except ValueError:
         return 1.0
+
+
+#: True when main() chose QT_SCALE_FACTOR from the saved setting (rather than the user
+#: exporting it), so a relaunch must not hand that value on.
+_SCALE_FROM_CONFIG = False
+
+
+def relaunch_environment(env=None):
+    """The environment for the copy of the app that replaces this one.
+
+    - Our own QT_SCALE_FACTOR is dropped: inherited, it counts as "set by the user"
+      and the new copy would start at the old scale instead of the one just saved.
+    - A PyInstaller one-file exe tells whatever it starts where its temporary folder
+      is. The child then runs out of the parent's folder, which the parent deletes
+      as it exits ("Failed to start embedded python interpreter", "Failed to remove
+      temporary directory"). PYINSTALLER_RESET_ENVIRONMENT makes the child unpack
+      its own copy; the older variables are cleared for bootloaders that predate it.
+    """
+    env = dict(os.environ if env is None else env)
+    if _SCALE_FROM_CONFIG:
+        env.pop("QT_SCALE_FACTOR", None)
+    for key in [k for k in env if k.startswith("_PYI_") or k == "_MEIPASS2"]:
+        env.pop(key)
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
+
+
+def relaunch(exe, args):
+    """Start a detached copy of the app; the caller then quits."""
+    import subprocess
+    kw = {}
+    if sys.platform == "win32":
+        kw["creationflags"] = 0x00000008 | 0x00000200   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    else:
+        kw["start_new_session"] = True
+    return subprocess.Popen([exe, *args], env=relaunch_environment(), close_fds=True,
+                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL, **kw)
 
 
 def scale_percent():
@@ -217,7 +255,12 @@ class Studio(QMainWindow):
         frozen = getattr(sys, "frozen", False)
         args = sys.argv[1:] if frozen else sys.argv
         self._swapping = True                 # already asked about unsaved work
-        QProcess.startDetached(sys.executable, args)
+        try:
+            relaunch(sys.executable, args)
+        except OSError as exc:
+            self._swapping = False
+            QMessageBox.warning(self, "Restart", f"Could not restart: {exc}\nStart the app again by hand.")
+            return
         QApplication.quit()
 
     @staticmethod
@@ -430,7 +473,9 @@ def main():
     # Scale the whole UI (text, buttons, spacing alike): 100% in the menu is BASE_SCALE
     # of Qt's natural size. Qt reads this once, before the application object exists.
     # An explicit QT_SCALE_FACTOR still wins.
+    global _SCALE_FROM_CONFIG
     if "QT_SCALE_FACTOR" not in os.environ:
+        _SCALE_FROM_CONFIG = True
         try:
             pct = float(config.get("ui_scale", DEFAULT_SCALE))
         except (TypeError, ValueError):

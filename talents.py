@@ -87,9 +87,10 @@ WISP = [
 #: A recipe list has no checkbox for its master talent: ticking any recipe adds
 #: `Npc_SetTalentSkill (self, <master>, 1)` by itself.
 GROUPS = [
-    ("Alchemy and runes", [],
-     [("Potions", "NPC_TALENT_ALCHEMY", _recipes("PLAYER_TALENT_ALCHEMY", POTIONS)),
-      ("Runes", "NPC_TALENT_RUNES", _recipes("PLAYER_TALENT_RUNES", RUNES))]),
+    ("Alchemy", [],
+     [("Potions", "NPC_TALENT_ALCHEMY", _recipes("PLAYER_TALENT_ALCHEMY", POTIONS))]),
+    ("Runes", [],
+     [("Runes", "NPC_TALENT_RUNES", _recipes("PLAYER_TALENT_RUNES", RUNES))]),
     ("Smithing", [],
      [("Weapons", "NPC_TALENT_SMITH", _recipes("PLAYER_TALENT_SMITH", WEAPONS))]),
     ("Hunting", [],

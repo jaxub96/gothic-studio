@@ -189,6 +189,14 @@ check(not d.side.isVisible() and d.side.bar.isVisible() and d.side.save_btn.isVi
 check(w.npc.side.bar.isVisible() if w.tabs.currentIndex()==0 else True,"...on the NPC tab too")
 w.side_btn.setChecked(True); app.processEvents()
 
+
+# ---- talents: Alchemy and Runes are two sections, each with its own teaching dialog
+check("Alchemy" in talents.group_titles() and "Runes" in talents.group_titles() and "Alchemy and runes" not in talents.group_titles(),"Alchemy and Runes are separate talent sections")
+_p=npc.talents; npc.talents={talents.teachable("Alchemy")[0]["id"], talents.teachable("Runes")[0]["id"]}
+_t=teach_gen.build_teaching(npc); npc.talents=_p
+check("_Teach_Alchemy " in _t and "_Teach_Runes " in _t and 'Teach me: Alchemy"' in _t and 'Teach me: Runes"' in _t,"each section gets its own 'Teach me' entry")
+check(teach_gen.parse_teaching(_t)=={talents.teachable("Alchemy")[0]["id"], talents.teachable("Runes")[0]["id"]},"the teaching file reads back to the same talents")
+
 # nothing stray
 stray=[p for p in scripts.rglob("*") if p.is_file() and p.name.upper().startswith(("ZZ_","TMP"))]
 check(not stray,"no stray temp files in the mod")
