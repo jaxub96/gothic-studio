@@ -482,6 +482,16 @@ def main():
             pct = DEFAULT_SCALE
         os.environ["QT_SCALE_FACTOR"] = f"{BASE_SCALE * max(40.0, min(200.0, pct)) / 100:.4f}"
 
+    # Run from source, the process is pythonw.exe, so Windows would group the
+    # window under Python's taskbar button and icon. An app ID of our own gives
+    # it its own button with the Gothic Studio icon (make-shortcut.bat).
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("GothicStudio.Studio")
+        except (AttributeError, OSError):
+            pass
+
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     # On macOS this would replace the Dock icon with the bare G; the bundle's
