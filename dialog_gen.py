@@ -20,9 +20,13 @@ class DialogLine:
         self.text = text
 
 class DialogChoice:
-    def __init__(self, label="", func_name=""):
+    def __init__(self, label="", func_name="", back=True):
         self.label = label
         self.func_name = func_name
+        # True: once this choice's reply is played the menu is cleared and the
+        # conversation returns to the main line (Info_ClearChoices). False: the
+        # other choices stay, so the player can pick several before going back.
+        self.back = back
 
 class EffectEntry:
     """A give-item / take-item / give-xp / log-entry / routine effect, placed
@@ -67,7 +71,14 @@ class DialogBlock:
     'func void' triggered by a choice in another block (is_followup=True)."""
     def __init__(self):
         self.name = ""; self.description = ""; self.nr = 1
-        self.permanent = 0; self.important = 0; self.condition_expr = ""
+        self.permanent = 0; self.important = 0
+        # When can the scene be offered?  `requires` is a scene of this file (or any
+        # DIA_ instance) the hero must already have heard, written as
+        # Npc_KnowsInfo(other, ...). `extra_conditions` are if-expressions typed by
+        # hand; all of them are ANDed and the function returns 1 when they hold.
+        # `condition_expr` is only for a hand-written condition body that cannot be
+        # split into those parts: it is kept and written back exactly as read.
+        self.requires = ""; self.extra_conditions: list = []; self.condition_expr = ""
         self.entries: list = []       # DialogLine and EffectEntry, in flow order
         self.choices: list[DialogChoice] = []
         self.stop_after = True; self.is_exit = False; self.is_trade = False
@@ -76,6 +87,7 @@ class DialogBlock:
         self.is_followup = False
         self.func_name = ""          # fixed export identifier, e.g. DIA_Gomez_Reward_ItemChoice
         self.parent_block = None     # the DialogBlock this is a choice of (runtime link, not exported)
+        self.clear_after = True      # follow-up only: Info_ClearChoices(<menu>) after the reply
 
     def lines(self):
         return [e for e in self.entries if isinstance(e, DialogLine)]
@@ -114,6 +126,36 @@ def resolve_condition(expr, npc_id, blocks):
     scenes = {sanitize(b.name).upper(): export_block_name(npc_id, b.name)
               for b in blocks if b.name and not b.is_followup and not b.is_exit}
     return KNOWSINFO_RE.sub(lambda m: m.group(1) + scenes.get(m.group(2).upper(), m.group(2)) + m.group(3), expr)
+
+def requires_instance(requires, npc_id, blocks):
+    """The dialog instance a `requires` value names: a scene of this file by its
+    short name, otherwise whatever was written (a DIA_ instance from elsewhere)."""
+    key = sanitize(requires).upper()
+    for b in blocks:
+        if b.name and not b.is_followup and not b.is_exit and sanitize(b.name).upper() == key:
+            return export_block_name(npc_id, b.name)
+    return requires.strip()
+
+
+def condition_lines(b, npc_id, blocks):
+    """The body of a scene's FUNC INT ..._Condition(), as tab-indented lines."""
+    if b.condition_expr.strip():                       # a hand-written body, kept as read
+        return ["\t" + cl for cl in
+                resolve_condition(b.condition_expr.strip(), npc_id, blocks).splitlines()]
+    parts = []
+    if b.requires.strip():
+        parts.append(f"Npc_KnowsInfo(other, {requires_instance(b.requires, npc_id, blocks)})")
+    for extra in b.extra_conditions:
+        extra = extra.strip().rstrip(";").strip()
+        if extra:
+            parts.append(extra)
+    if not parts:
+        return ["\treturn 1;"]
+    if len(parts) > 1:                                 # keep an `a || b` from swallowing the AND
+        parts = [f"({x})" if "||" in x else x for x in parts]
+    cond = resolve_condition(" && ".join(parts), npc_id, blocks)
+    return [f"\tif ({cond})", "\t{", "\t\treturn 1;", "\t};"]
+
 
 def export_followup_name(parent_bn, block_name):
     suffix = sanitize(block_name) if block_name else "Choice"
@@ -175,7 +217,7 @@ def _render_followup(b, all_blocks, root_bn):
         out.append(f"\tInfo_ClearChoices\t({b.func_name});")
         for ch in b.choices:
             out.append(f'\tInfo_AddChoice\t({b.func_name},{_q(ch.label)},{ch.func_name});')
-    if not b.choices and not children:
+    if not b.choices and not children and b.clear_after:
         out.append(f"\tInfo_ClearChoices\t({root_bn});")
     out += ["};", ""]
     for child in children:
@@ -212,10 +254,7 @@ def generate_dia_file(npc_name, npc_id, blocks, emit_exit=True):
         if b.description and not b.important: out.append(f'\tdescription\t= {_q(b.description)};')
         if b.is_trade: out.append("\tTrade\t\t= 1;")
         out += ["};", "", f"FUNC int {bn}_Condition()", "{"]
-        if b.condition_expr.strip():
-            for cl in resolve_condition(b.condition_expr.strip(), npc_id, blocks).splitlines(): out.append(f"\t{cl}")
-        else:
-            out.append("\treturn 1;")
+        out += condition_lines(b, npc_id, blocks)
         out += ["};", "", f"FUNC VOID {bn}_Info()", "{"]
         if b.choices: out.append(f"\tInfo_ClearChoices\t({bn});")
         out += _entry_lines(b.entries, bn)
@@ -261,25 +300,53 @@ def generate_constants_file(npc_id, blocks, known_topics=()):
     return "\n".join(out)
 
 
+NEST = " > "          # -- ASSIGNMENT > SUBSTANCE --  marks SUBSTANCE as a choice under ASSIGNMENT
+
+
+def _choice_label(parent, child):
+    """The text the hero picks to reach `child`: the parent's choice that names it."""
+    for ch in parent.choices:
+        if ch.func_name and ch.func_name == child.func_name:
+            return ch.label
+    return ""
+
+
+def parent_children(parent, blocks):
+    return [c for c in blocks if c.parent_block is parent]
+
+
 def export_plain_dialog(blocks):
     """A simple 'Speaker - line' reference text, scene by scene, in reading
     order (each scene followed immediately by any choice follow-ups it has).
-    Effects are skipped — this is dialog-only reference text."""
+    A choice's reply is headed with its whole path, `-- ASSIGNMENT > SUBSTANCE --`,
+    and starts with the text the hero picks, `Choice - Jaka to substancja?`, so
+    parse_plain_dialog() can rebuild the nesting. Effects are skipped - this is
+    dialog-only reference text."""
     out = []
 
-    def walk(b):
+    def walk(b, path):
         spoken = b.lines()
-        if spoken:
-            out.append(f"-- {b.name or 'Scene'} --")
+        kids = parent_children(b, blocks)
+        if spoken or b.is_followup or kids:
+            out.append(f"-- {NEST.join(path)} --")
+            if b.is_followup and b.parent_block is not None:
+                label = _choice_label(b.parent_block, b)
+                if not label:
+                    siblings = parent_children(b.parent_block, blocks)
+                    i = siblings.index(b)
+                    if i < len(b.parent_block.choices):
+                        label = b.parent_block.choices[i].label
+                if label:
+                    out.append(f"Choice - {label}")
             for ln in spoken:
                 out.append(f"{speaker_display_name(ln.speaker)} - {ln.text}")
             out.append("")
-        for c in [c for c in blocks if c.parent_block is b]:
-            walk(c)
+        for c in kids:
+            walk(c, path + [c.name or "Choice"])
 
     for b in blocks:
         if b.is_exit or b.is_followup: continue
-        walk(b)
+        walk(b, [b.name or "Scene"])
     return "\n".join(out).strip() + "\n"
 
 
@@ -290,14 +357,22 @@ def parse_plain_dialog(text):
         NPC - line
         Hero - line
 
-    and turns it into a flat list of top-level DialogBlocks (dialog lines
-    only — no choices/effects, since the plain format doesn't carry those).
-    Lines before the first '-- Name --' header land in an 'Untitled' scene.
+        -- Scene Name > Reply --
+        Choice - what the hero picks to get this reply
+        NPC - line
+
+    and turns it into DialogBlocks. A header with a `>` is a choice reply under
+    the scene before the `>` (to any depth); its `Choice -` line becomes that
+    choice's text. Blocks come back in the order the editor wants: each scene
+    followed by its replies. Dialog lines only - the plain format carries no
+    effects. Lines before the first header land in an 'Untitled' scene.
+    Handler names are not set here; see bind_choices().
     """
     header_re  = re.compile(r'^--\s*(.+?)\s*--$')
     speaker_re = re.compile(r'^(NPC|Hero)\s*-\s*(.*)$', re.I)
+    choice_re  = re.compile(r'^Choice\s*-\s*(.*)$', re.I)
 
-    blocks = []
+    tops, by_path, labels = [], {}, {}
     current = None
     for raw in text.splitlines():
         line = raw.strip()
@@ -305,19 +380,61 @@ def parse_plain_dialog(text):
             continue
         header_m = header_re.match(line)
         if header_m:
+            path = [p.strip() for p in header_m.group(1).split(">") if p.strip()] or ["Scene"]
             current = DialogBlock()
-            current.name = header_m.group(1).strip()
-            blocks.append(current)
+            current.name = path[-1]
+            parent = by_path.get(tuple(p.upper() for p in path[:-1])) if len(path) > 1 else None
+            if parent is not None:
+                current.is_followup, current.parent_block = True, parent
+            else:
+                tops.append(current)
+                path = [path[-1]] if len(path) > 1 else path    # parent unknown: a scene of its own
+            by_path[tuple(p.upper() for p in path)] = current
+            continue
+        choice_m = choice_re.match(line)
+        if choice_m and current is not None and current.is_followup:
+            labels[id(current)] = choice_m.group(1).strip()
             continue
         speaker_m = speaker_re.match(line)
         if speaker_m:
             if current is None:
                 current = DialogBlock()
                 current.name = "Untitled"
-                blocks.append(current)
+                tops.append(current)
+                by_path[("UNTITLED",)] = current
             speaker = "self" if speaker_m.group(1).lower() == "npc" else "other"
             current.entries.append(DialogLine(speaker=speaker, text=speaker_m.group(2).strip()))
-    return blocks
+
+    kids = {}
+    for blk in by_path.values():
+        if blk.parent_block is not None:
+            kids.setdefault(id(blk.parent_block), []).append(blk)
+    for blk in kids.values():                              # keep file order among siblings
+        blk.sort(key=lambda c: list(by_path.values()).index(c))
+    ordered = []
+
+    def add(b):
+        ordered.append(b)
+        for c in kids.get(id(b), []):
+            b.choices.append(DialogChoice(labels.get(id(c)) or c.name, ""))
+            add(c)
+
+    for t in tops:
+        add(t)
+    return ordered
+
+
+def bind_choices(blocks, npc_id):
+    """Give freshly imported blocks their exported names and point each choice at
+    its reply (they are matched in order, which is how parse_plain_dialog built them)."""
+    for b in blocks:
+        if b.is_followup:
+            b.func_name = export_followup_name(b.parent_block.func_name, b.name)
+        else:
+            b.func_name = export_block_name(npc_id, b.name)
+    for b in blocks:
+        for ch, kid in zip(b.choices, parent_children(b, blocks)):
+            ch.func_name = kid.func_name
 
 
 # ── Parser (round-trips files produced by this tool) ───────────────────────────
@@ -350,7 +467,7 @@ def _parse_body(body):
     from daedalus_read import norm, split_statements
 
     sts = split_statements(body)
-    entries, choices, stop = [], [], False
+    entries, choices, stop, cleared = [], [], False, False
     i = 0
     while i < len(sts):
         raw, comment = sts[i]
@@ -363,7 +480,7 @@ def _parse_body(body):
         elif _STOP.fullmatch(t):
             stop = True
         elif _CLEAR.fullmatch(t):
-            pass
+            cleared = True
         elif (m := _CHOICE.fullmatch(t)):
             label = m.group(2).strip()
             if len(label) >= 2 and label[0] == label[-1] == '"' and label.count('"') == 2:
@@ -396,7 +513,16 @@ def _parse_body(body):
         else:
             entries.append(EffectEntry("raw", raw=raw.strip()))
         i += 1
-    return entries, choices, stop
+    return entries, choices, stop, cleared
+
+
+def _followup_name(func_name, parent_func):
+    """DIA_VLK_001_Remus_ASSIGNMENT_SUBSTANCE under DIA_VLK_001_Remus_ASSIGNMENT is
+    the scene SUBSTANCE: the scene's own name, not the text the hero sees."""
+    prefix = parent_func + "_"
+    if parent_func and func_name.upper().startswith(prefix.upper()) and len(func_name) > len(prefix):
+        return func_name[len(prefix):]
+    return func_name
 
 
 def _followups(parent, choices, funcs, out, notes, seen):
@@ -409,14 +535,75 @@ def _followups(parent, choices, funcs, out, notes, seen):
             notes.append(f"choice handler {ch.func_name} is not in this file")
             continue
         name, body = funcs[key]
-        entries, sub, stop = _parse_body(body)
+        entries, sub, stop, cleared = _parse_body(body)
         fb = DialogBlock()
         fb.is_followup, fb.func_name, fb.parent_block = True, name, parent
-        fb.name = name if ch.label.startswith("=") or not ch.label else ch.label
+        fb.name = _followup_name(name, parent.func_name)
         fb.entries, fb.choices, fb.stop_after = entries, sub, stop
+        fb.clear_after = cleared
+        ch.back = cleared                  # the choice row shows what its reply does
         out.append(fb)
         if sub:
             _followups(fb, sub, funcs, out, notes, seen)
+
+
+_IF_RETURN = re.compile(r"\s*if\s*\((.*)\)\s*\{\s*return\s+(?:1|true)\s*;\s*\}\s*;?\s*", re.I | re.S)
+_KNOWS = re.compile(r"Npc_KnowsInfo\s*\(\s*other\s*,\s*(\w+)\s*\)", re.I)
+
+
+def _split_and(expr):
+    """Split `a && (b || c) && "x && y"` on the top-level && only."""
+    parts, depth, cur, quote, i = [], 0, [], False, 0
+    while i < len(expr):
+        ch = expr[i]
+        if ch == '"':
+            quote = not quote
+        elif not quote:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            elif ch == "&" and expr[i:i + 2] == "&&" and depth == 0:
+                parts.append("".join(cur).strip())
+                cur, i = [], i + 2
+                continue
+        cur.append(ch)
+        i += 1
+    parts.append("".join(cur).strip())
+    return parts
+
+
+def _unwrap(term):
+    """(a || b) -> a || b, but (a) || (b) stays as it is."""
+    while term.startswith("(") and term.endswith(")"):
+        depth = 0
+        for i, ch in enumerate(term):
+            depth += (ch == "(") - (ch == ")")
+            if depth == 0 and i < len(term) - 1:
+                return term
+        term = term[1:-1].strip()
+    return term
+
+
+def split_condition(body, prefix):
+    """`if (A && B) { return 1; };` -> (requires, [extra conditions]), or None when
+    the body is anything else. The first Npc_KnowsInfo(other, DIA_<npc>_<Scene>) term
+    is the scene this one requires; every other term is a hand-typed condition."""
+    m = _IF_RETURN.fullmatch(body)
+    if not m:
+        return None
+    terms = [t for t in _split_and(m.group(1).strip()) if t]
+    if not terms:
+        return None
+    requires, extras = "", []
+    for t in terms:
+        k = _KNOWS.fullmatch(_unwrap(t))
+        if k and not requires:
+            inst = k.group(1)
+            requires = inst[len(prefix):] if inst.upper().startswith(prefix.upper()) else inst
+        else:
+            extras.append(_unwrap(t))
+    return requires, extras
 
 
 def _dedent(body):
@@ -469,11 +656,15 @@ def parse_dia_file(text, notes=None):
             used.add(cond)
             expr = _dedent(funcs[cond][1])
             if norm(expr).lower() not in ("return 1", "return true", ""):
-                b.condition_expr = expr
+                parsed = split_condition(expr, prefix)
+                if parsed is None:
+                    b.condition_expr = expr        # not an `if (...) { return 1; }`: keep as written
+                else:
+                    b.requires, b.extra_conditions = parsed
         info = f.get("information", "").lower()
         if info in funcs:
             used.add(info)
-            b.entries, b.choices, b.stop_after = _parse_body(funcs[info][1])
+            b.entries, b.choices, b.stop_after, _ = _parse_body(funcs[info][1])
         b.func_name = bn
         blocks.append(b)
         if b.choices:

@@ -134,6 +134,69 @@ check(d._emit_exit() is False,"another file's EXIT for the same NPC suppresses a
 dup.unlink()
 # validate buttons run
 w.npc._validate(); d._validate(); check(True,"Validate runs on both tabs")
+
+# ---- dialog structure: nested replies, the Back toggle, conditions, bottom bar
+import re as _re
+d._new_project(); d.npc_name_edit.setText("Remus"); d.npc_id_edit.setCurrentText(inst)
+nested=("-- ASSIGNMENT --\nNPC - Jest pewna substancja.\n\n-- ASSIGNMENT > SUBSTANCE --\nChoice - Jaka to substancja?\nNPC - Pewien preparat.\n\n"
+        "-- ASSIGNMENT > MOTIVE --\nChoice - A dlaczego sam się tym nie zajmiesz?\nNPC - Władze nie uznają moich praktyk.\n\n"
+        "-- TASK --\nNPC - Co do przesyłki...\n\n-- TASK > ACCEPT --\nChoice - Dowiem się.\nNPC - Dobrze.\n")
+src2=root/"nested.txt"; src2.write_bytes(nested.encode("cp1250"))
+QFileDialog.getOpenFileName=staticmethod(lambda *a,**k:(str(src2),""))
+d._import_text()
+shape=[("  " if b.is_followup else "")+b.name for b in d.blocks]
+check(shape==["ASSIGNMENT","  SUBSTANCE","  MOTIVE","TASK","  ACCEPT"],f"Import text keeps nesting and titles ({shape})")
+linked=[cw.linked_block is not None for ed in d.block_editors for cw in ed.get_choice_widgets()]
+check(linked and all(linked),"imported choices are linked to their replies")
+check([c.label for c in d.blocks[0].choices]==["Jaka to substancja?","A dlaczego sam się tym nie zajmiesz?"],"import keeps each choice's text")
+check(d.blocks[3].requires=="ASSIGNMENT" and d.blocks[0].requires=="","imported scenes require the scene before them (not the first)")
+check(dialog_gen.export_plain_dialog(d._collect_blocks())==nested.strip()+"\n","Export text writes the nesting back identically")
+
+def body(text, fname):
+    m=_re.search(r"func void "+fname+r"\(\)\s*\{(.*?)\n\};", text, _re.I|_re.S)
+    return m.group(1) if m else ""
+base="DIA_"+dialog_gen.sanitize(inst)
+txt=d._dia_text()
+check("Info_ClearChoices" in body(txt,base+"_ASSIGNMENT_SUBSTANCE"),"a reply goes back to the menu by default (Info_ClearChoices)")
+mot=d.block_editors[0].get_choice_widgets()[1]; mot.back_cb.setChecked(False)
+txt=d._dia_text()
+check("Info_ClearChoices" not in body(txt,base+"_ASSIGNMENT_MOTIVE") and "Info_ClearChoices" in body(txt,base+"_ASSIGNMENT_SUBSTANCE"),"unticking Back on one choice drops its Info_ClearChoices only")
+ed_task=d.block_editors[3]
+ed_task._add_condition("Kapitel >= 2")
+txt=d._dia_text()
+cond=_re.search(r"FUNC INT "+base+r"_TASK_Condition\(\)\s*\{(.*?)\n\};",txt,_re.I|_re.S).group(1)
+check(f"Npc_KnowsInfo(other, {base}_ASSIGNMENT) && Kapitel >= 2" in cond and "return 1;" in cond,"Requires + extra condition export as one if(...) that returns 1")
+d.side.save_btn.click(); app.processEvents()
+n2,i2,re_blocks=dialog_gen.parse_dia_file(project.read_script(df))
+shape2=[("  " if b.is_followup else "")+b.name for b in re_blocks]
+check(shape2==shape,f"Open on the saved .d gives the scene names, not the choice texts ({shape2})")
+mot2=next(b for b in re_blocks if b.name=="MOTIVE"); task2=next(b for b in re_blocks if b.name=="TASK")
+check(mot2.clear_after is False and next(c for c in re_blocks[0].choices if c.func_name==mot2.func_name).back is False,"the Back setting survives save + open")
+check(task2.requires=="ASSIGNMENT" and task2.extra_conditions==["Kapitel >= 2"],"conditions survive save + open as Requires + extra")
+# rename: whoever requires a scene follows its new name
+d.block_editors[0].name_edit.setText("BRIEF"); d._collect_blocks()
+check(d.block_editors[3].requires_text()=="BRIEF","renaming a scene updates scenes that require it")
+d.block_editors[3].set_requires("NoSuchScene")
+check(any("requires 'NoSuchScene'" in p for p in d._problems()),"Validate flags a Requires that names no scene")
+d.block_editors[3].set_requires("BRIEF")
+# a new scene defaults to requiring the one before
+before=len([b for b in d.blocks if not b.is_followup]); d._add_block(); d._collect_blocks()
+newb=d.blocks[-1]; check(newb.requires=="TASK" and len([b for b in d.blocks if not b.is_followup])==before+1,"a new scene requires the previous scene by default")
+check("16px" in d.block_editors[0].get_choice_widgets()[0].label.styleSheet(),"choice rows use the chat bubble's text size")
+# the action bar is not part of the side panel
+w.side_btn.setChecked(False); app.processEvents()
+check(not d.side.isVisible() and d.side.bar.isVisible() and d.side.save_btn.isVisible(),"Validate / Save as / Open / Save to mod stay visible with the side panel hidden")
+check(w.npc.side.bar.isVisible() if w.tabs.currentIndex()==0 else True,"...on the NPC tab too")
+w.side_btn.setChecked(True); app.processEvents()
+
+
+# ---- talents: Alchemy and Runes are two sections, each with its own teaching dialog
+check("Alchemy" in talents.group_titles() and "Runes" in talents.group_titles() and "Alchemy and runes" not in talents.group_titles(),"Alchemy and Runes are separate talent sections")
+_p=npc.talents; npc.talents={talents.teachable("Alchemy")[0]["id"], talents.teachable("Runes")[0]["id"]}
+_t=teach_gen.build_teaching(npc); npc.talents=_p
+check("_Teach_Alchemy " in _t and "_Teach_Runes " in _t and 'Teach me: Alchemy"' in _t and 'Teach me: Runes"' in _t,"each section gets its own 'Teach me' entry")
+check(teach_gen.parse_teaching(_t)=={talents.teachable("Alchemy")[0]["id"], talents.teachable("Runes")[0]["id"]},"the teaching file reads back to the same talents")
+
 # nothing stray
 stray=[p for p in scripts.rglob("*") if p.is_file() and p.name.upper().startswith(("ZZ_","TMP"))]
 check(not stray,"no stray temp files in the mod")

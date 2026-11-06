@@ -177,7 +177,7 @@ THEME = {
     "font_size_tiny":   "15px",
     "font_size_button": "16px",
     "font_size_chat":   "16px",   # bubble text and the line input
-    "font_size_scene":  "15px",   # scene list rows
+    "font_size_scene":  "14px",   # scene list rows and the NPC tab list: one size for both
     "font_size_title":  "22px",
     "font_size_placeholder": "21px",
     "font_size_code":   9,           # pt, used for QFont object

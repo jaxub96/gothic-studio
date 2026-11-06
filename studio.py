@@ -17,7 +17,7 @@ if "--dev" in sys.argv:       # must be set before project is imported
 
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QColor, QIcon, QKeySequence, QPalette, QShortcut
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QMessageBox, QStatusBar, QToolButton,
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QMenu, QMessageBox, QStatusBar, QToolButton,
                              QTabWidget)
 
 import config
@@ -27,6 +27,66 @@ import theme
 import ui
 from theme import SS, THEME
 from version import VERSION
+
+#: What "100%" means: the app is drawn at 85% of Qt's natural size, because that is
+#: the size it was designed to read well at. The Scale menu is relative to this.
+BASE_SCALE = 0.85
+#: Scales offered in the status bar menu, as percentages of the 100% above
+SCALES = (70, 75, 80, 85, 90, 100, 110, 125)
+DEFAULT_SCALE = 100
+
+
+def ui_scale():
+    """The factor Qt is really using this run (QT_SCALE_FACTOR, read once at
+    start-up, so a change in the menu takes a restart)."""
+    try:
+        return max(0.4, float(os.environ.get("QT_SCALE_FACTOR") or 1))
+    except ValueError:
+        return 1.0
+
+
+#: True when main() chose QT_SCALE_FACTOR from the saved setting (rather than the user
+#: exporting it), so a relaunch must not hand that value on.
+_SCALE_FROM_CONFIG = False
+
+
+def relaunch_environment(env=None):
+    """The environment for the copy of the app that replaces this one.
+
+    - Our own QT_SCALE_FACTOR is dropped: inherited, it counts as "set by the user"
+      and the new copy would start at the old scale instead of the one just saved.
+    - A PyInstaller one-file exe tells whatever it starts where its temporary folder
+      is. The child then runs out of the parent's folder, which the parent deletes
+      as it exits ("Failed to start embedded python interpreter", "Failed to remove
+      temporary directory"). PYINSTALLER_RESET_ENVIRONMENT makes the child unpack
+      its own copy; the older variables are cleared for bootloaders that predate it.
+    """
+    env = dict(os.environ if env is None else env)
+    if _SCALE_FROM_CONFIG:
+        env.pop("QT_SCALE_FACTOR", None)
+    for key in [k for k in env if k.startswith("_PYI_") or k == "_MEIPASS2"]:
+        env.pop(key)
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
+
+
+def relaunch(exe, args):
+    """Start a detached copy of the app; the caller then quits."""
+    import subprocess
+    kw = {}
+    if sys.platform == "win32":
+        kw["creationflags"] = 0x00000008 | 0x00000200   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    else:
+        kw["start_new_session"] = True
+    return subprocess.Popen([exe, *args], env=relaunch_environment(), close_fds=True,
+                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL, **kw)
+
+
+def scale_percent():
+    """The number the menu shows: the current scale relative to BASE_SCALE."""
+    return round(ui_scale() / BASE_SCALE * 100)
+
 
 # dialog_page and npc_page are imported by _load_pages() instead of here. They
 # pull in gamedata and textures, which read project.SCRIPTS at import time, and
@@ -49,6 +109,7 @@ class Studio(QMainWindow):
         super().__init__()
         theme.resolve_fonts()             # no-op after the first call
         self.setWindowTitle(f"Gothic Studio {VERSION}")
+        self.setMinimumSize(int(980 / ui_scale()), int(520 / ui_scale()))
         self._size_and_centre()
         self.setStyleSheet(SS["global"])
 
@@ -80,7 +141,7 @@ class Studio(QMainWindow):
 
     def closeEvent(self, event):
         # Unsaved dialog scenes exist only in this window; ask before they go.
-        if self.dialog.confirm_close():
+        if getattr(self, "_swapping", False) or self.dialog.confirm_close():
             event.accept()
         else:
             event.ignore()
@@ -114,7 +175,10 @@ class Studio(QMainWindow):
 
     def _size_and_centre(self):
         """Open at a modest size (never more than 75% of the screen), centred."""
-        want_w, want_h = THEME["window_size"]
+        # The size is for a 100% UI. At a smaller scale the same screen area holds
+        # more, so the window opens that much bigger in its own units.
+        scale = ui_scale()
+        want_w, want_h = (int(v / scale) for v in THEME["window_size"])
         area = self.screen().availableGeometry()
         self.resize(min(want_w, int(area.width() * 0.75)),
                     min(want_h, int(area.height() * 0.75)))
@@ -150,12 +214,54 @@ class Studio(QMainWindow):
             "Switch between the light and dark look (applies on restart)",
             compact=True)
 
+        self.scale_btn = ui.button(
+            f"Scale {scale_percent()}%", None, ui.DEFAULT,
+            "Make everything smaller or larger (takes a restart)", compact=True)
+        menu = QMenu(self.scale_btn)
+        current = scale_percent()
+        for pct in SCALES:
+            act = menu.addAction(f"{pct}%")
+            act.setCheckable(True)
+            act.setChecked(pct == current)
+            act.triggered.connect(lambda _=False, v=pct: self._set_scale(v))
+        self.scale_btn.setMenu(menu)
+
         bar.addWidget(self.path_label, 1)
         bar.addPermanentWidget(self.gdc_btn)
+        bar.addPermanentWidget(self.scale_btn)
         bar.addPermanentWidget(self.theme_btn)
         bar.addPermanentWidget(self.folder_btn)
         bar.addPermanentWidget(self.compile_btn)
         self.setStatusBar(bar)
+
+    def _set_scale(self, pct):
+        """Remember the scale, then offer to restart: Qt applies it only at start-up."""
+        if pct == scale_percent():
+            return
+        config.save("ui_scale", pct)
+        answer = QMessageBox.question(
+            self, "Scale", f"Scale set to {pct}%. Restart Gothic Studio now to apply it?\n"
+            "Your open work is kept if you save it first.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes)
+        if answer == QMessageBox.StandardButton.Yes:
+            self._restart()
+        else:
+            self.statusBar().showMessage(f"Scale {pct}% - applies the next time you start", 8000)
+
+    def _restart(self):
+        if not self.dialog.confirm_close():
+            return
+        frozen = getattr(sys, "frozen", False)
+        args = sys.argv[1:] if frozen else sys.argv
+        self._swapping = True                 # already asked about unsaved work
+        try:
+            relaunch(sys.executable, args)
+        except OSError as exc:
+            self._swapping = False
+            QMessageBox.warning(self, "Restart", f"Could not restart: {exc}\nStart the app again by hand.")
+            return
+        QApplication.quit()
 
     @staticmethod
     def _theme_label():
@@ -181,6 +287,7 @@ class Studio(QMainWindow):
         new.setWindowState(self.windowState())
         new.show()
         _windows.append(new)
+        self._swapping = True                 # its work lives on in `new`: no unsaved prompt
         self.close()
         if self in _windows:
             _windows.remove(self)
@@ -201,6 +308,7 @@ class Studio(QMainWindow):
             "npc_id": d._npc_id(),
             "block": d.current_block_idx,
             "file": d.current_file_path,
+            "saved_text": d._saved_text,
             "touched": (d._npc_id_touched, d._npc_name_touched),
             "status": d.side.status.text(),
             "npc_status": self.npc.side.status.text(),
@@ -213,6 +321,7 @@ class Studio(QMainWindow):
             if 0 <= s["block"] < len(d.blocks):
                 d._select_block(s["block"])
         d.current_file_path = s["file"]
+        d._saved_text = s["saved_text"]       # what was saved stays saved, what was not stays not
         d._npc_id_touched, d._npc_name_touched = s["touched"]
         d.side.say(s["status"])
         d.side.tabs.setCurrentIndex(s["dlg_side"])
@@ -360,6 +469,18 @@ def main():
         import traceback
         sys.stderr.write("".join(traceback.format_exception(kind, value, tb)))
     sys.excepthook = _report
+
+    # Scale the whole UI (text, buttons, spacing alike): 100% in the menu is BASE_SCALE
+    # of Qt's natural size. Qt reads this once, before the application object exists.
+    # An explicit QT_SCALE_FACTOR still wins.
+    global _SCALE_FROM_CONFIG
+    if "QT_SCALE_FACTOR" not in os.environ:
+        _SCALE_FROM_CONFIG = True
+        try:
+            pct = float(config.get("ui_scale", DEFAULT_SCALE))
+        except (TypeError, ValueError):
+            pct = DEFAULT_SCALE
+        os.environ["QT_SCALE_FACTOR"] = f"{BASE_SCALE * max(40.0, min(200.0, pct)) / 100:.4f}"
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
