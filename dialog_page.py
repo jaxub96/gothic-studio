@@ -63,6 +63,9 @@ class DialogPage(QWidget):
         self.current_block_idx = -1
         self.current_file_path = None
         self._scene_min = 0
+        # Code in the opened file the editor cannot hold (helper functions, shared menus,
+        # flags), kept as read and written back unchanged: ("before" | "after", source)
+        self.kept_code = []
         self._npc_id_touched = False
         self._npc_name_touched = False
         # What the editor looked like at the last save / open / new. Anything
@@ -432,7 +435,8 @@ class DialogPage(QWidget):
             if b.is_followup:
                 parent_bn = (b.parent_block.func_name if b.parent_block.is_followup
                              else export_block_name(ni, b.parent_block.name))
-                b.func_name = export_followup_name(parent_bn, b.name)
+                b.func_name = (b.keep_func if b.keep_func and b.name == b.keep_name
+                               else export_followup_name(parent_bn, b.name))
         for ed in self.block_editors:
             for cw in ed.get_choice_widgets():
                 if cw.linked_block is not None:
@@ -450,6 +454,8 @@ class DialogPage(QWidget):
         rewritten, so its own EXIT must be written back, not treated as someone
         else's.
         """
+        if any("DIALOG_ENDE" in source.upper() for _, source in self.kept_code):
+            return False                           # the file brought its own EXIT, kept as written
         ni = self._npc_id()
         if not ni:
             return True
@@ -466,7 +472,7 @@ class DialogPage(QWidget):
         blocks = self._collect_blocks()
         return generate_dia_file(self._npc_name() or "NPC",
                                  self._npc_id() or "NPC_ID",
-                                 blocks, emit_exit=self._emit_exit())
+                                 blocks, emit_exit=self._emit_exit(), kept=self.kept_code)
 
     def _refresh_preview(self, *_):
         text = self._dia_text()
@@ -622,7 +628,7 @@ class DialogPage(QWidget):
                 if previous is not None:
                     b.requires = previous.name
                 previous = b
-        self._load_project(self._npc_name(), self._npc_id(), existing + blocks)
+        self._load_project(self._npc_name(), self._npc_id(), existing + blocks, self.kept_code)
         self._npc_id_touched, self._npc_name_touched = keep
         replies = sum(1 for b in blocks if b.is_followup)
         self.side.say(f"Imported {len(blocks) - replies} scene(s)"
@@ -643,11 +649,12 @@ class DialogPage(QWidget):
             return
         notes = []
         try:
-            npc_name, npc_id, blocks = parse_dia_file(project.read_script(path), notes)
+            kept = []
+            npc_name, npc_id, blocks = parse_dia_file(project.read_script(path), notes, kept)
         except OSError as e:
             QMessageBox.critical(self, "Could Not Open", f"{e}")
             return
-        self._load_project(npc_name, npc_id, blocks)
+        self._load_project(npc_name, npc_id, blocks, kept)
         self.current_file_path = path
         self._mark_clean()
         self.side.say(f"Opened: {path}")
@@ -668,7 +675,8 @@ class DialogPage(QWidget):
         self._mark_clean()
         self.side.say("")
 
-    def _load_project(self, npc_name, npc_id, blocks):
+    def _load_project(self, npc_name, npc_id, blocks, kept=None):
+        self.kept_code = list(kept or [])
         for ed in self.block_editors:
             self.editor_stack.removeWidget(ed)
             ed.deleteLater()
@@ -751,7 +759,8 @@ class DialogPage(QWidget):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             notes = []
-            name, npc_id, blocks = parse_dia_file(data["text"], notes)
+            kept = []
+            name, npc_id, blocks = parse_dia_file(data["text"], notes, kept)
             name = data.get("npc_name") or name
             npc_id = data.get("npc_id") or npc_id
         except (OSError, ValueError, KeyError):
@@ -768,7 +777,7 @@ class DialogPage(QWidget):
         if answer != QMessageBox.StandardButton.Yes:
             self._clear_draft()
             return
-        self._load_project(name, npc_id, blocks)
+        self._load_project(name, npc_id, blocks, kept)
         self.current_file_path = data.get("file") or None
         self._saved_text = ""             # still unsaved, so it stays marked dirty
         self._write_draft()

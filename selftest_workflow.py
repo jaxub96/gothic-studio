@@ -197,6 +197,72 @@ _t=teach_gen.build_teaching(npc); npc.talents=_p
 check("_Teach_Alchemy " in _t and "_Teach_Runes " in _t and 'Teach me: Alchemy"' in _t and 'Teach me: Runes"' in _t,"each section gets its own 'Teach me' entry")
 check(teach_gen.parse_teaching(_t)=={talents.teachable("Alchemy")[0]["id"], talents.teachable("Runes")[0]["id"]},"the teaching file reads back to the same talents")
 
+
+# ---- reply names relative to the root scene
+hand=("// Dialog file for T (T_1)\n"
+      "instance DIA_T_1_ASSIGN (C_INFO)\n{\n\tnpc\t= T_1;\n\tnr\t= 1;\n\tcondition\t= DIA_T_1_ASSIGN_Condition;\n\tinformation\t= DIA_T_1_ASSIGN_Info;\n\tpermanent\t= 0;\n};\n"
+      "FUNC INT DIA_T_1_ASSIGN_Condition()\n{\n\treturn 1;\n};\n"
+      "FUNC VOID DIA_T_1_ASSIGN_Info()\n{\n\tInfo_ClearChoices\t(DIA_T_1_ASSIGN);\n\tAI_Output (self, other,\"a\"); //Hello.\n\tInfo_AddChoice\t(DIA_T_1_ASSIGN,\"Retrieve?\",DIA_T_1_ASSIGN_RETRIEVE);\n};\n"
+      "func void DIA_T_1_ASSIGN_RETRIEVE()\n{\n\tAI_Output (self, other,\"b\"); //Maybe.\n\tInfo_ClearChoices\t(DIA_T_1_ASSIGN);\n\tInfo_AddChoice\t(DIA_T_1_ASSIGN,\"Accept\",DIA_T_1_ASSIGN_ACCEPT);\n};\n"
+      "func void DIA_T_1_ASSIGN_ACCEPT()\n{\n\tAI_Output (self, other,\"c\"); //Good.\n\tInfo_ClearChoices\t(DIA_T_1_ASSIGN);\n};\n")
+_n,_i,hb=dialog_gen.parse_dia_file(hand)
+check([("  " if b.is_followup else "")+b.name for b in hb]==["ASSIGN","  RETRIEVE","  ACCEPT"],"a reply of a reply named after the root scene still gets its short name (ACCEPT)")
+d._new_project(); d._load_project("T","T_1",hb)
+out=d._dia_text()
+check("DIA_T_1_ASSIGN_ACCEPT()" in out and "ASSIGN_RETRIEVE_ACCEPT" not in out,"re-saving keeps the handler names the file was read with")
+d.block_editors[2].name_edit.setText("AGREE"); out=d._dia_text()
+check("DIA_T_1_ASSIGN_RETRIEVE_AGREE()" in out,"renaming a reply renames its handler")
+d.block_editors[2].name_edit.setText("ACCEPT")
+
+# ---- code the editor cannot hold is kept
+helper=("// helper the editor does not know\nfunc void B_T_Accept()\n{\n\tT_Accepted = TRUE;\n};\n\n")
+tail="\nfunc void DIA_T_1_ASSIGN_EXTRA()\n{\n\tAI_Output (self, other,\"z\"); //Extra.\n};\n"
+hand2=hand.replace("instance DIA_T_1_ASSIGN (C_INFO)", helper+"instance DIA_T_1_ASSIGN (C_INFO)",1)+tail
+kept=[]; notes=[]
+_n,_i,hb2=dialog_gen.parse_dia_file(hand2,notes,kept)
+check(not notes and [w for w,_ in kept]==["before","after"],f"helper functions are kept, not reported as lost ({[w for w,_ in kept]}, notes={notes})")
+d._new_project(); d._load_project("T","T_1",hb2,kept)
+out=d._dia_text()
+check("func void B_T_Accept()" in out and "T_Accepted = TRUE;" in out and "DIA_T_1_ASSIGN_EXTRA()" in out,"saving writes the kept functions back unchanged")
+kept2=[]; dialog_gen.parse_dia_file(out,None,kept2)
+check([x for _,x in kept2]==[x for _,x in kept],"...and reading that file again keeps the same code")
+
+# ---- reading a vanilla-style file and writing it back
+vanilla=("instance DIA_Foo_EXIT (C_INFO)\n{\n\tnpc = T_1;\n\tnr = 999;\n\tcondition = DIA_Foo_EXIT_Condition;\n\tinformation = DIA_Foo_EXIT_Info;\n\tpermanent = TRUE;\n\tdescription = DIALOG_ENDE;\n};\n"
+ "FUNC INT DIA_Foo_EXIT_Condition()\n{\n\treturn TRUE;\n};\nFUNC VOID DIA_Foo_EXIT_Info()\n{\n\tAI_StopProcessInfos (self);\n};\n"
+ "instance DIA_Foo_Hello (C_INFO)\n{\n\tnpc = T_1;\n\tnr = 1;\n\tcondition = DIA_Foo_Hello_Condition;\n\tinformation = DIA_Foo_Hello_Info;\n\tpermanent = FALSE;\n\tdescription = \"Hi\";\n};\n"
+ "FUNC INT DIA_Foo_Hello_Condition()\n{\n\treturn TRUE;\n};\n"
+ "FUNC VOID DIA_Foo_Hello_Info()\n{\n\tAI_Output (self, other,\"DIA_Addon_Foo_Hello_10_00\"); //Czego chcesz?\n\tInfo_ClearChoices (DIA_Foo_Hello);\n"
+ "\tInfo_AddChoice (DIA_Foo_Hello, \"Nic\", DIA_Foo_Hello_NO);\n\tInfo_AddChoice (DIA_Foo_Hello, \"Wiele\", DIA_Foo_Hello_YES);\n};\n"
+ "FUNC VOID DIA_Foo_Hello_NO()\n{\n\tAI_Output (self, other,\"DIA_Foo_Hello_NO_10_00\"); //No to idź.\n\tAI_StopProcessInfos (self);\n};\n"
+ "FUNC VOID DIA_Foo_Hello_YES()\n{\n\tAI_Output (self, other,\"DIA_Foo_Hello_YES_10_00\"); //Proszę bardzo.\n\tInfo_ClearChoices (DIA_Foo_Hello);\n};\n"
+ "instance DIA_Foo_Next (C_INFO)\n{\n\tnpc = T_1;\n\tnr = 2;\n\tcondition = DIA_Foo_Next_Condition;\n\tinformation = DIA_Foo_Next_Info;\n\tpermanent = FALSE;\n\tdescription = \"Dalej\";\n};\n"
+ "FUNC INT DIA_Foo_Next_Condition()\n{\n\tif (Npc_KnowsInfo (other, DIA_Foo_Hello))\n\t&& (Player_IsApprentice == APP_NONE)\n\t{\n\t\treturn TRUE;\n\t};\n};\n"
+ "FUNC VOID DIA_Foo_Next_Info()\n{\n\tif (Foo_Flag == TRUE)\n\t{\n\t\tAI_Output (self, other,\"DIA_Foo_Next_10_00\"); //Tekst w bloku if.\n\t};\n};\n")
+vk=[]; vn=[]; _n,_i,vb=dialog_gen.parse_dia_file(vanilla,vn,vk)
+nxt_s=next(b for b in vb if b.name=="DIA_Foo_Next")
+check(nxt_s.requires=="DIA_Foo_Hello" and nxt_s.extra_conditions==["Player_IsApprentice == APP_NONE"],f"a vanilla condition 'if (A) && (B)' splits into Requires + extra ({nxt_s.requires!r}, {nxt_s.extra_conditions})")
+d._new_project(); d._load_project(_n,_i,vb,vk); vout=d._dia_text()
+check('"DIA_Addon_Foo_Hello_10_00"' in vout and '"DIA_Foo_Hello_NO_10_00"' in vout,"every recording name is written back as read, even one that does not match its scene")
+check("//Tekst w bloku if." in vout,"spoken text inside an if block is kept")
+no_body=dialog_gen.__dict__.get("_x") or _re.search(r"func void DIA_Foo_Hello_NO\(\)\s*\{(.*?)\n\};",vout,_re.I|_re.S).group(1)
+yes_body=_re.search(r"func void DIA_Foo_Hello_YES\(\)\s*\{(.*?)\n\};",vout,_re.I|_re.S).group(1)
+check("AI_StopProcessInfos" in no_body and "Info_ClearChoices" in yes_body,"a reply that ends the conversation still ends it, one that returns still returns")
+check("instance DIA_Foo_EXIT" in vout.replace("INSTANCE","instance") and "DIA_T_1_EXIT" not in vout and vout.upper().count("DIALOG_ENDE")==1,"the file's own EXIT is kept under its own name, with no second one added")
+newline=dialog_gen.DialogLine("self","Nowa linia."); vb[0].entries.append(newline)
+_txt=dialog_gen.generate_dia_file(_n,_i,vb,False,vk)
+_pairs=_re.findall(r'"([^"]+)"\);\s*//(Czego chcesz\?|Nowa linia\.)',_txt)
+check(len(_pairs)==2 and len({p[0].upper() for p in _pairs})==2 and _pairs[0][0]=="DIA_Addon_Foo_Hello_10_00","a line added later gets a recording name of its own, different from the kept ones")
+import os as _os
+_cons="/Users/jakubjaworski/Creativity/Gothic-Mod/Gothic II Unpacked/_work/Data/Scripts/CONTENT/Story/Dialoge/DIA_VLK_417_Constantino.d"
+if _os.path.isfile(_cons):
+    ct=open(_cons,"rb").read().decode("cp1250"); ck=[]; cn,ci,cb=dialog_gen.parse_dia_file(ct,[],ck)
+    cout=dialog_gen.generate_dia_file(cn,ci,cb,emit_exit=not any("DIALOG_ENDE" in x.upper() for _,x in ck),kept=ck)
+    names=lambda x:{m.lower() for m in _re.findall(r"(?im)^\s*(?:func\s+\w+|instance)\s+(\w+)",x)}
+    ids=lambda x:sorted(m.upper() for m in _re.findall(r'(?im)^[^/\n]*AI_Output\s*\([^)]*"([^"]+)"\)',x))
+    check(names(ct)==names(cout),"Constantino (game file): every function and instance survives")
+    check(ids(ct)==ids(cout),f"Constantino (game file): all {len(ids(ct))} recording names are unchanged")
+
 # nothing stray
 stray=[p for p in scripts.rglob("*") if p.is_file() and p.name.upper().startswith(("ZZ_","TMP"))]
 check(not stray,"no stray temp files in the mod")

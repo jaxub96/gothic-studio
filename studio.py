@@ -309,6 +309,7 @@ class Studio(QMainWindow):
             "block": d.current_block_idx,
             "file": d.current_file_path,
             "saved_text": d._saved_text,
+            "kept": list(d.kept_code),
             "touched": (d._npc_id_touched, d._npc_name_touched),
             "status": d.side.status.text(),
             "npc_status": self.npc.side.status.text(),
@@ -317,7 +318,7 @@ class Studio(QMainWindow):
     def _restore(self, s):
         d = self.dialog
         if s["blocks"] or s["npc_name"] or s["npc_id"]:
-            d._load_project(s["npc_name"], s["npc_id"], s["blocks"])
+            d._load_project(s["npc_name"], s["npc_id"], s["blocks"], s["kept"])
             if 0 <= s["block"] < len(d.blocks):
                 d._select_block(s["block"])
         d.current_file_path = s["file"]
