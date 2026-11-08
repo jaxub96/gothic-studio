@@ -69,8 +69,9 @@ def split_statements(body):
     """[(raw statement, trailing // comment)] for a block body.
 
     A braced statement (`if (...) { ... };`, with any `else` chain) is a single
-    statement. A comment that follows a statement on its own line is returned
-    with that statement - Gothic dialogs keep the spoken text there.
+    statement, kept with the comments inside it. A comment that follows a statement
+    on its own line is returned with that statement - Gothic dialogs keep the
+    spoken text there.
     """
     out, cur = [], []
     depth, i, n, last_end = 0, 0, len(body), 0
@@ -91,12 +92,17 @@ def split_statements(body):
             i = j
         elif body.startswith("//", i):
             j = _skip(body, i)
-            if (out and not "".join(cur).strip() and not out[-1][1]
+            if depth > 0:
+                cur.append(body[i:j])      # inside { } the comment stays: it may be spoken text
+            elif (out and not "".join(cur).strip() and not out[-1][1]
                     and "\n" not in body[last_end:i]):
                 out[-1][1] = body[i + 2:j].strip()
             i = j
         elif body.startswith("/*", i):
-            i = _skip(body, i)
+            j = _skip(body, i)
+            if depth > 0:
+                cur.append(body[i:j])
+            i = j
         elif c == "{":
             depth += 1
             cur.append(c)
@@ -154,6 +160,48 @@ def functions(text):
 def instances(text):
     """[(name, parent, body)] for every instance in `text`."""
     return [(m.group(1), m.group(2), body) for m, body in _blocks(text, _INSTANCE)]
+
+
+_TOP_STATEMENT = re.compile(r"^[ \t]*(?:var|const)\s+\w+\s+(\w+)[^;]*;[ \t]*$", re.I | re.M)
+
+
+def top_level(text):
+    """[(kind, name, start, end)] for every top-level func, instance and var/const
+    statement, in file order. `start` includes the // comment lines directly above
+    it (no blank line between), `end` is exclusive and includes a trailing `;`."""
+    spans = []
+    for kind, pattern in (("func", _FUNC), ("instance", _INSTANCE)):
+        pos = 0
+        while True:
+            m = pattern.search(text, pos)
+            if not m:
+                break
+            close = match_brace(text, m.end() - 1)
+            if close < 0:
+                break
+            end = close + 1
+            while end < len(text) and text[end] in " \t":
+                end += 1
+            if end < len(text) and text[end] == ";":
+                end += 1
+            spans.append([kind, m.group(1), m.start(), end])
+            pos = close + 1
+    inside = lambda i: any(s[2] <= i < s[3] for s in spans)
+    for m in _TOP_STATEMENT.finditer(text):
+        if not inside(m.start()):
+            spans.append(["var", m.group(1), m.start(), m.end()])
+    spans.sort(key=lambda s: s[2])
+    for s in spans:                                   # pull the comment lines above it in
+        start = s[2]
+        while start > 0:
+            prev = text.rfind("\n", 0, start - 1)
+            line = text[prev + 1:start - 1] if start >= 1 else ""
+            if line.strip().startswith("//") and start - 1 > 0 and text[start - 1] == "\n":
+                start = prev + 1
+            else:
+                break
+        s[2] = start
+    return [tuple(s) for s in spans]
 
 
 def norm(statement):
