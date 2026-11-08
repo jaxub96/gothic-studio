@@ -265,6 +265,26 @@ def _strip(stem):
     return stem[:-2] if stem.endswith("-C") else stem
 
 
+def _mod_volumes(data_dir):
+    """The texture-pack volumes the active mod loads, oldest first.
+
+    system/mod.ini names them: `VDF=HD_Heads.mod  Armor_HD.mod`. A volume that is in
+    ModVDF but not on that line is not loaded by the game, so it is not read here either.
+    """
+    ini = data_dir.parent / "system" / "mod.ini"
+    names = []
+    try:
+        for line in ini.read_text(encoding="latin-1").splitlines():
+            if line.strip().upper().startswith("VDF="):
+                names = line.split("=", 1)[1].split()
+    except OSError:
+        return []
+    found = []
+    for name in names:
+        found += [f for f in iglob(data_dir / "ModVDF", name) if f.is_file()]
+    return sorted(set(found), key=lambda f: f.stat().st_mtime)
+
+
 @lru_cache
 def _index():
     """Every texture we can reach, keyed by bare uppercase name.
@@ -283,6 +303,14 @@ def _index():
             for name, ref in _read_vdf(vdf).items():
                 if name.endswith(".TEX"):
                     out[_strip(name)] = ref
+
+    # Texture packs: the volumes the mod lists on the VDF= line of system/mod.ini
+    # (Data/ModVDF/HD_Heads.mod and the like). They replace the base game's textures;
+    # when two hold the same one, the newer volume wins, as in the engine.
+    for vdf in _mod_volumes(data_dir):
+        for name, ref in _read_vdf(vdf).items():
+            if name.endswith(".TEX"):
+                out[_strip(name)] = ref
 
     # Loose compiled textures override.
     if TEXTURE_DIR.is_dir():

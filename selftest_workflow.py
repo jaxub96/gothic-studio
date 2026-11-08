@@ -263,6 +263,16 @@ if _os.path.isfile(_cons):
     check(names(ct)==names(cout),"Constantino (game file): every function and instance survives")
     check(ids(ct)==ids(cout),f"Constantino (game file): all {len(ids(ct))} recording names are unchanged")
 
+
+# ---- texture packs: only the volumes mod.ini lists are read, oldest first
+import textures as _tx, time as _time
+_game=root/"Gothic II"; (_game/"system").mkdir(parents=True); (_game/"Data"/"ModVDF").mkdir(parents=True)
+(_game/"system"/"mod.ini").write_text("[SETTINGS]\nVDF=HD_Heads.mod  Armor_HD.mod\nOther=1\n")
+for n in ("HD_Heads.mod","Armor_HD.mod","Unlisted.mod"): (_game/"Data"/"ModVDF"/n).write_bytes(b"x")
+_os.utime(_game/"Data"/"ModVDF"/"HD_Heads.mod",(_time.time()-100,_time.time()-100))
+check([f.name for f in _tx._mod_volumes(_game/"Data")]==["HD_Heads.mod","Armor_HD.mod"],"texture volumes: those on the VDF= line are read, the unlisted one is not, the newer last")
+check(_tx._mod_volumes(root/"nowhere"/"Data")==[],"texture volumes: no mod.ini means no volumes")
+
 # nothing stray
 stray=[p for p in scripts.rglob("*") if p.is_file() and p.name.upper().startswith(("ZZ_","TMP"))]
 check(not stray,"no stray temp files in the mod")
