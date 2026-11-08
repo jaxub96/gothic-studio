@@ -53,6 +53,7 @@ HEAD = {
     "HUM_HEAD_BALD": "Bald",
     "HUM_HEAD_FATBALD": "Fat, bald",
     "HUM_HEAD_FIGHTER": "Fighter",
+    "HUM_HEAD_LONG": "Long",
     "HUM_HEAD_PONY": "Ponytail",
     "HUM_HEAD_PSIONIC": "Psionic",
     "HUM_HEAD_BABE": "Female",
