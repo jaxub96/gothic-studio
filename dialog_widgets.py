@@ -284,6 +284,8 @@ class EffectBubble(QFrame, _DropTargetMixin):
         "routine": "🧭",
         "follow": "🧭",
         "unfollow": "🏠",
+        "set_var": "🚩",
+        "call": "⚙",
     }
 
     def __init__(self, entry: EffectEntry, on_remove=None):
@@ -343,7 +345,8 @@ class EffectInsertRow(QWidget):
 
         self.kind_cmb = ui.Dropdown()
         self.kind_cmb.addItems(
-            ["Give Item", "Take Item", "Give XP", "Change Routine", "Follow", "Stop Following", "Log Entry"]
+            ["Give Item", "Take Item", "Give XP", "Change Routine", "Follow", "Stop Following", "Log Entry",
+             "Script Call", "Set Variable"]
         )
         self.kind_cmb.setMinimumWidth(140)
         self.kind_cmb.setStyleSheet(SS["combo"])
@@ -379,6 +382,19 @@ class EffectInsertRow(QWidget):
         self.entry_edit.setPlaceholderText("Log entry text")
         self.entry_edit.setStyleSheet(SS["field"])
 
+        self.func_edit = QLineEdit()
+        self.func_edit.setPlaceholderText("Function  e.g. B_Attack")
+        self.func_edit.setStyleSheet(SS["field"])
+        self.args_edit = QLineEdit()
+        self.args_edit.setPlaceholderText("Arguments  e.g. self, other, AR_NONE, 1")
+        self.args_edit.setStyleSheet(SS["field"])
+        self.var_edit = QLineEdit()
+        self.var_edit.setPlaceholderText("Variable  e.g. MIS_Remus_Done")
+        self.var_edit.setStyleSheet(SS["field"])
+        self.value_edit = QLineEdit()
+        self.value_edit.setPlaceholderText("Value  e.g. TRUE")
+        self.value_edit.setStyleSheet(SS["field"])
+
         insert_btn = QPushButton("＋ Insert")
         insert_btn.setStyleSheet(SS["add_btn"])
         insert_btn.clicked.connect(self._insert)
@@ -391,6 +407,10 @@ class EffectInsertRow(QWidget):
         lay.addWidget(self.topic_edit, 1)
         lay.addWidget(self.status_cmb)
         lay.addWidget(self.entry_edit, 1)
+        lay.addWidget(self.func_edit, 1)
+        lay.addWidget(self.args_edit, 1)
+        lay.addWidget(self.var_edit, 1)
+        lay.addWidget(self.value_edit, 1)
         lay.addWidget(insert_btn)
 
         self._update_visibility()
@@ -408,6 +428,10 @@ class EffectInsertRow(QWidget):
         self.topic_edit.setVisible(show_log)
         self.status_cmb.setVisible(show_log)
         self.entry_edit.setVisible(show_log)
+        self.func_edit.setVisible(kind == 7)
+        self.args_edit.setVisible(kind == 7)
+        self.var_edit.setVisible(kind == 8)
+        self.value_edit.setVisible(kind == 8)
         if kind == 5:
             self.routine_edit.setPlaceholderText("Routine to resume  e.g. START")
         else:
@@ -443,6 +467,15 @@ class EffectInsertRow(QWidget):
         elif kind == 5:
             routine = self.routine_edit.text().strip() or "START"
             e = EffectEntry("unfollow", routine=routine)
+        elif kind == 7:
+            if not self.func_edit.text().strip():
+                return
+            e = EffectEntry("call", func=self.func_edit.text().strip(), args=self.args_edit.text().strip())
+        elif kind == 8:
+            if not self.var_edit.text().strip():
+                return
+            e = EffectEntry("set_var", var=self.var_edit.text().strip(),
+                            value=self.value_edit.text().strip() or "TRUE")
         else:
             if not self.topic_edit.text().strip():
                 return
@@ -459,6 +492,8 @@ class EffectInsertRow(QWidget):
         self.routine_edit.clear()
         self.topic_edit.clear()
         self.entry_edit.clear()
+        for w in (self.func_edit, self.args_edit, self.var_edit, self.value_edit):
+            w.clear()
         self.count_spin.setValue(1)
 
 

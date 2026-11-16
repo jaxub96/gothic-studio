@@ -19,7 +19,7 @@ import config
 import gamedata
 import project
 import ui
-from dialog_gen import (DialogBlock, bind_choices, requires_instance, export_block_name, export_followup_name,
+from dialog_gen import (DialogBlock, bind_choices, requires_instance, export_block_name, export_followup_name, block_instance, has_own_exit,
                         generate_constants_file, generate_dia_file,
                         export_plain_dialog, parse_dia_file, parse_plain_dialog,
                         resolve_condition, sanitize, KNOWSINFO_RE)
@@ -370,7 +370,8 @@ class DialogPage(QWidget):
         if parent_block.is_followup and parent_block.func_name:
             parent_bn = parent_block.func_name
         else:
-            parent_bn = export_block_name(ni, parent_name)
+            parent_bn = (block_instance(parent_block, ni) if parent_name == parent_block.name
+                         else export_block_name(ni, parent_name))
 
         n = len([b for b in self.blocks if b.parent_block is parent_block]) + 1
         nb = DialogBlock()
@@ -424,17 +425,18 @@ class DialogPage(QWidget):
             self.block_items[i].update_name(b.name)
         self._fit_scene_column()
 
+        # Keep the nr each scene was read with; only make the order non-decreasing,
+        # so a new or moved scene follows its neighbour instead of renumbering all.
         n = 1
         for b in self.blocks:
             if not b.is_followup:
-                b.nr = n
-                n += 1
+                b.nr = n = max(int(b.nr or 1), n)
 
         ni = self._npc_id() or "NPC_ID"
         for b in self.blocks:
             if b.is_followup:
                 parent_bn = (b.parent_block.func_name if b.parent_block.is_followup
-                             else export_block_name(ni, b.parent_block.name))
+                             else block_instance(b.parent_block, ni))
                 b.func_name = (b.keep_func if b.keep_func and b.name == b.keep_name
                                else export_followup_name(parent_bn, b.name))
         for ed in self.block_editors:
@@ -454,7 +456,7 @@ class DialogPage(QWidget):
         rewritten, so its own EXIT must be written back, not treated as someone
         else's.
         """
-        if any("DIALOG_ENDE" in source.upper() for _, source in self.kept_code):
+        if has_own_exit(self.kept_code):
             return False                           # the file brought its own EXIT, kept as written
         ni = self._npc_id()
         if not ni:
@@ -504,14 +506,14 @@ class DialogPage(QWidget):
 
         # A required scene must exist here or in Content/; Npc_KnowsInfo in a hand-typed
         # condition must name a dialog instance too.
-        own = {export_block_name(ni or "NPC", b.name).upper() for b in blocks if not b.is_followup and not b.is_exit}
+        own = {block_instance(b, ni or "NPC").upper() for b in blocks if not b.is_followup and not b.is_exit}
         for b in blocks:
             if b.is_followup:
                 continue
             req = b.requires.strip()
             if req:
                 inst = requires_instance(req, ni or "NPC", blocks)
-                if inst.upper() == export_block_name(ni or "NPC", b.name).upper():
+                if inst.upper() == block_instance(b, ni or "NPC").upper():
                     problems.append(f"Scene '{b.name}' requires itself, so it can never be offered.")
                 elif inst.upper() not in own and gamedata.unknown("info", inst):
                     problems.append(f"Scene '{b.name}': requires '{req}', which is no scene of this "

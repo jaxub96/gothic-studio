@@ -438,7 +438,9 @@ def xp_constants():
 
 @lru_cache
 def log_topics():
-    return _scan("Story/Log_Entries/**/*.d", r"^\s*const\s+string\s+(TOPIC_\w+)")
+    # any `const string NAME` in Log_Entries: a mod's topics are not all called TOPIC_*
+    # (TOWN_WORK, FISH ...), and one that looked unknown got defined a second time on save
+    return _scan("Story/Log_Entries/**/*.d", r"^\s*const\s+string\s+(\w+)")
 
 
 @lru_cache

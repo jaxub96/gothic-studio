@@ -264,6 +264,154 @@ if _os.path.isfile(_cons):
     check(ids(ct)==ids(cout),f"Constantino (game file): all {len(ids(ct))} recording names are unchanged")
 
 
+
+# ---- round trip of hand-written vanilla-style code: nothing changes meaning
+_rt = """
+instance DIA_Addon_Foo_Hi (C_INFO)
+{
+	npc = VLK_900_Foo;
+	nr = 6;
+	condition = DIA_Foo_Hi_Cond;
+	information = DIA_Foo_Hi_Run;
+	permanent = 0;
+	description = "Hi";
+};
+func int DIA_Foo_Hi_Cond ()
+{
+	if (Npc_KnowsInfo(other, DIA_Addon_Foo_Intro))//first note
+	&& (Foo_Flag == TRUE)//second note
+	&& (Kapitel >= 3)//third note
+	{
+		return TRUE;
+	};
+};
+func void DIA_Foo_Hi_Run ()
+{
+	AI_Output (other, self, "DIA_Addon_Foo_Hi_15_00"); //Hi.
+	B_GiveInvItems (self, other, ItMi_Thing, 1);
+	CreateInvItems (self, ItMi_Gold, 5);
+	B_GiveInvItems (self, other, ItMi_Gold, 5);
+	Info_ClearChoices (DIA_Addon_Foo_Hi);
+	Info_AddChoice (DIA_Addon_Foo_Hi, "Steal", DIA_Foo_Hi_Steal);
+	Info_AddChoice (DIA_Addon_Foo_Hi, "Pay", DIA_Foo_Hi_Pay);
+};
+func void DIA_Foo_Hi_Steal ()
+{
+	AI_Output (self, other, "DIA_Addon_Foo_Steal_10_00"); //No.
+	Info_AddChoice (DIA_Addon_Foo_Hi, "Again", DIA_Foo_Hi_Again);
+};
+func void DIA_Foo_Hi_Again ()
+{
+	AI_Output (self, other, "DIA_Addon_Foo_Again_10_00"); //Still no.
+	Info_ClearChoices (DIA_Shared_Pickpocket);
+};
+func void DIA_Foo_Hi_Pay ()
+{
+	AI_Output (self, other, "DIA_Addon_Foo_Pay_10_00"); //Ok.
+	Info_ClearChoices (DIA_Addon_Foo_Hi);
+};
+instance DIA_Addon_Foo_Intro (C_INFO)
+{
+	npc = VLK_900_Foo;
+	nr = 2;
+	condition = DIA_Foo_Intro_C;
+	information = DIA_Foo_Intro_I;
+	description = "Intro";
+};
+func int DIA_Foo_Intro_C () { return 1; };
+func void DIA_Foo_Intro_I ()
+{
+	Info_ClearChoices (DIA_Addon_Foo_Intro);
+	AI_StopProcessInfos (self);
+};
+"""
+_k = []; _n, _i, _b = dialog_gen.parse_dia_file(_rt, [], _k)
+_o = dialog_gen.generate_dia_file(_n, _i, _b, emit_exit=False, kept=_k)
+_names = lambda x: {m.lower() for m in _re.findall(r"(?im)^\s*(?:func\s+\w+|instance)\s+(\w+)", x)}
+check(_names(_rt) == _names(_o), "round trip: instance and function names are written back as read")
+check([int(v) for v in _re.findall(r"nr\s*=\s*(\d+)", _o)] == [2, 6], "round trip: nr values are kept")
+_cond = _o[_o.lower().find("func int dia_foo_hi_cond"):].split("};")[0]
+check(_cond.lower().index("knowsinfo") < _cond.index("Foo_Flag") < _cond.index("Kapitel"), "round trip: condition terms keep their order, a comment after one does not hide the rest")
+check("ItMi_Thing, 1);" in _o and "CreateInvItems(self, ItMi_Thing" not in _o, "round trip: a bare hand-over does not also create the item")
+check("hero" not in _o and "B_GiveInvItems (self, other, ItMi_Gold, 5)" in _o, "round trip: items go to other, never hero")
+check("Info_AddChoice\t(DIA_Addon_Foo_Hi,\"Again\"" in _o and _o.count("Info_ClearChoices\t(DIA_Addon_Foo_Hi)") == 2, "round trip: a menu that is only added to is not cleared first")
+check(_re.search(r"Info_ClearChoices\s*\(DIA_Shared_Pickpocket\)", _o) and "Info_ClearChoices\t(DIA_Addon_Foo_Hi)" in _o, "round trip: a clear aimed at a shared menu stays aimed there")
+check("Info_ClearChoices\t(DIA_Addon_Foo_Intro)" in _o, "round trip: a clear without any choices is kept")
+_ren = [x for x in _b if not x.is_followup and x.name == "DIA_Addon_Foo_Hi"][0]; _ren.name = "Greeting"
+_o2 = dialog_gen.generate_dia_file(_n, _i, _b, emit_exit=False, kept=_k)
+check("instance DIA_VLK_900_Foo_Greeting" in _o2 and "DIA_VLK_900_Foo_Greeting_Condition" in _o2 and "DIA_Foo_Hi_Cond" not in _o2, "renaming a scene in the editor regenerates its instance and functions")
+
+
+# ---- every kind of effect survives a round trip, and what Studio cannot hold stays as written
+_fx = """
+instance DIA_Fx_Main (C_INFO)
+{
+	npc = VLK_901_Fx;
+	nr = 1;
+	condition = DIA_Fx_Main_C;
+	information = DIA_Fx_Main_I;
+	description = "Fx";
+};
+func int DIA_Fx_Main_C () { return 1; };
+func void DIA_Fx_Main_I ()
+{
+	AI_Output (hero, self, "DIA_Fx_Main_15_00"); //Hero speaks.
+	AI_Output (self, hero, "DIA_Fx_Main_10_01"); //Answer to hero.
+	AI_Output (Garwig, other, "DIA_Fx_Main_X_02"); //Someone else.
+	CreateInvItems (self, ItMi_A, 3);
+	B_GiveInvItems (self, hero, ItMi_A, 3);
+	B_GiveInvItems (self, other, ItMi_B, 1);
+	B_GiveInvItems (hero, self, ItMi_C, 2);
+	B_GiveXP (XP_One);
+	B_GivePlayerXP (XP_Two);
+	Log_CreateTopic (TOPIC_Q, LOG_MISSION);
+	Log_SetTopicStatus (TOPIC_Q, LOG_RUNNING);
+	B_LogEntry (TOPIC_Q, "Entry one.");
+	B_LogEntry (TOPIC_Q, "Entry two.");
+	Log_AddEntry (TOPIC_Q, "Entry three.");
+	Log_SetTopicStatus (TOPIC_Q, LOG_SUCCESS);
+	Log_CreateTopic (TOPIC_N, LOG_NOTE);
+	Npc_ExchangeRoutine (self, "Guide");
+	AI_StartState (self, ZS_Follow_Player, 0, "");
+	Fx_Flag = TRUE;
+	Fx_Count += 2;
+	B_Attack (self, other, AR_NONE, 1);
+	B_StartOtherRoutine (Bloodwyn, "GOLD");
+	Wld_InsertNpc (Fx_Guard, "WP_FX");
+	if (Fx_Flag == TRUE) { Fx_Count = 0; };
+	AI_StopProcessInfos (self);
+};
+"""
+_k = []; _n, _i, _b = dialog_gen.parse_dia_file(_fx, [], _k)
+_es = [e for e in _b[0].entries if not isinstance(e, dialog_gen.DialogLine)]
+_kinds = [e.kind for e in _es]
+check(_kinds == ["raw", "give_item", "give_item", "take_item", "give_xp", "give_xp", "log", "log", "log", "log", "log",
+                 "routine", "follow", "set_var", "set_var", "call", "call", "call", "raw"],
+      f"effects: every kind is recognised ({_kinds})")
+check([l.hero for l in _b[0].entries if isinstance(l, dialog_gen.DialogLine)] == [True, True], "effects: hero stays hero on import")
+check(_es[1].create and _es[1].actor == "hero" and not _es[2].create, "effects: a pair is a created gift, a bare B_GiveInvItems is a hand-over")
+_fo = dialog_gen.generate_dia_file(_n, _i, _b, emit_exit=False, kept=_k)
+check(_fo.count("CreateInvItems") == 1 and "B_GiveInvItems (self, other, ItMi_B, 1)" in _fo and "B_GiveInvItems (self, hero, ItMi_A, 3)" in _fo, "effects: items are written back as read")
+check("B_GiveXP(XP_One)" in _fo and "B_GivePlayerXP(XP_Two)" in _fo, "effects: B_GiveXP keeps its name")
+check("Log_AddEntry\t(TOPIC_Q,\"Entry three.\")" in _fo and _fo.count("Log_CreateTopic") == 2 and _fo.count("Log_SetTopicStatus") == 2, "effects: log steps are written back as read")
+check("AI_Output (Garwig, other" in _fo and "//Someone else." in _fo, "effects: a line spoken by someone else stays as written, subtitle included")
+_nw = dialog_gen.DialogBlock(); _nw.name = "New"; _nw.entries = [dialog_gen.DialogLine("other", "Hi"), dialog_gen.EffectEntry("give_item", item="ItMi_Z", count=1)]
+_nw_out = dialog_gen.generate_dia_file("X", "VLK_902_X", [_nw], emit_exit=False)
+check("hero" not in _nw_out and "AI_Output (other, self" in _nw_out and "B_GiveInvItems (self, other, ItMi_Z, 1)" in _nw_out, "effects: new content uses other, never hero")
+_odd = _fx.replace("func void DIA_Fx_Main_I ()", "func int DIA_Fx_Main_I ()")
+_on = []; _ob = dialog_gen.parse_dia_file(_odd, _on, [])[2]
+check(not _ob and any("kept exactly as written" in x for x in _on), "self-check: a scene Studio would rewrite differently is kept as written, not edited")
+_ok = []; dialog_gen.parse_dia_file(_fx, _ok, [])
+check(not any("kept exactly" in x for x in _ok), "self-check: a scene Studio can reproduce is editable")
+
+
+# ---- a topic constant that is not called TOPIC_* still counts as known (it used to be defined twice)
+import gamedata as _gd
+(project.LOG_DIR/"LOG_Constants_ZZKNOWN.d").write_text('const string TOWN_ZZKNOWN\t= "x";\n')
+_gd.log_topics.cache_clear()
+check("TOWN_ZZKNOWN" in {t.upper() for t in _gd.log_topics()}, "log topics: constants not named TOPIC_* are known")
+check(dialog_gen.generate_constants_file("X", [dialog_gen.DialogBlock()], ("TOWN_ZZKNOWN",)) == "", "log topics: a known topic is not defined again")
+(project.LOG_DIR/"LOG_Constants_ZZKNOWN.d").unlink(); _gd.log_topics.cache_clear()
 # ---- texture packs: only the volumes mod.ini lists are read, oldest first
 import textures as _tx, time as _time
 _game=root/"Gothic II"; (_game/"system").mkdir(parents=True); (_game/"Data"/"ModVDF").mkdir(parents=True)
