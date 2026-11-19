@@ -412,6 +412,55 @@ _gd.log_topics.cache_clear()
 check("TOWN_ZZKNOWN" in {t.upper() for t in _gd.log_topics()}, "log topics: constants not named TOPIC_* are known")
 check(dialog_gen.generate_constants_file("X", [dialog_gen.DialogBlock()], ("TOWN_ZZKNOWN",)) == "", "log topics: a known topic is not defined again")
 (project.LOG_DIR/"LOG_Constants_ZZKNOWN.d").unlink(); _gd.log_topics.cache_clear()
+
+# ---- menus aimed at a reply's function (what an older Studio wrote) are repaired, not carried over
+_old = """
+instance DIA_Old_Root (C_INFO)
+{
+	npc = VLK_903_Old; nr = 1; condition = DIA_Old_Root_Condition; information = DIA_Old_Root_Info;
+	permanent = 0; description = "Root";
+};
+func int DIA_Old_Root_Condition () { return 1; };
+func void DIA_Old_Root_Info ()
+{
+	AI_Output (self, other, "DIA_Old_Root_10_00"); //Root.
+	Info_ClearChoices (DIA_Old_Root);
+	Info_AddChoice (DIA_Old_Root, "One", DIA_Old_Root_One);
+};
+func void DIA_Old_Root_One ()
+{
+	AI_Output (self, other, "DIA_Old_Root_One_10_00"); //One.
+	Info_ClearChoices (DIA_Old_Root_One);
+	Info_AddChoice (DIA_Old_Root_One, "Two", DIA_Old_Root_Two);
+};
+func void DIA_Old_Root_Two ()
+{
+	AI_Output (self, other, "DIA_Old_Root_Two_10_00"); //Two.
+	Info_ClearChoices (DIA_Old_Root_Two);
+	Info_AddChoice (DIA_Old_Root_Two, "Three", DIA_Old_Root_Three);
+};
+func void DIA_Old_Root_Three ()
+{
+	AI_Output (self, other, "DIA_Old_Root_Three_10_00"); //Three.
+	Info_ClearChoices (DIA_Old_Root_Two);
+};
+"""
+_on = []; _ok = []; _oi = dialog_gen.parse_dia_file(_old, _on, _ok)
+_oo = dialog_gen.generate_dia_file(_oi[0], _oi[1], _oi[2], emit_exit=False, kept=_ok)
+_targets = _re.findall(r"Info_(?:ClearChoices|AddChoice)\s*\(\s*(\w+)", _oo)
+check(_targets and all(t == "DIA_Old_Root" for t in _targets), f"old menu pattern: every menu call, three levels deep, targets the scene ({sorted(set(_targets))})")
+check(sum("redirected" in x for x in _on) == 3 and not any("kept exactly" in x for x in _on), "old menu pattern: the repair is noted and the scenes stay editable")
+check(len(_oi[2]) == 4, "old menu pattern: all four scenes are read")
+_hb = dialog_gen.parse_dia_file(_old, [], [])[2]
+for _x in _hb:
+    if _x.is_followup:
+        _x.menu_target = _x.func_name       # a stale state, as an old draft could hold
+_h2 = dialog_gen.generate_dia_file("Old", "VLK_903_Old", _hb, emit_exit=False)
+check(all(t == "DIA_Old_Root" for t in _re.findall(r"Info_(?:ClearChoices|AddChoice)\s*\(\s*(\w+)", _h2)), "old menu pattern: a stale menu target on a block is still written as the scene")
+_shared = _old.replace("Info_ClearChoices (DIA_Old_Root_Two);\n};", "Info_ClearChoices (DIA_Shared_Menu);\n};")
+_sh = dialog_gen.parse_dia_file(_shared, [], [])
+check("DIA_Shared_Menu" in dialog_gen.generate_dia_file(_sh[0], _sh[1], _sh[2], emit_exit=False), "old menu pattern: a shared menu that is not a function of the file stays")
+
 # ---- texture packs: only the volumes mod.ini lists are read, oldest first
 import textures as _tx, time as _time
 _game=root/"Gothic II"; (_game/"system").mkdir(parents=True); (_game/"Data"/"ModVDF").mkdir(parents=True)
